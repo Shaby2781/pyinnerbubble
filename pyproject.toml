@@ -34,6 +34,7 @@ dependencies = [
     "scipy",
     "opencv-python",
     "matplotlib",
+    "shapely",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +47,7 @@ Issues = "https://github.com/REPLACE_ME/pyinnerbubble/issues"
 
 [project.scripts]
 pyinnerbubble-segment = "pyinnerbubble.geometry.segmentation:main"
+pyinnerbubble-reconstruct-shape = "pyinnerbubble.geometry.shape_reconstruction:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pyinnerbubble"]

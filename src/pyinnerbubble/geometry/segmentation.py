@@ -14,6 +14,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from pyinnerbubble.io import save_contour
+
 
 def load_image_rgb(image_path: str | Path) -> np.ndarray:
     """Load an image from disk and convert it to RGB."""
@@ -88,10 +90,6 @@ def segment_largest_contour(
     score = float(scores[best])
     contour = mask_to_contour(mask)
     return contour, mask, score
-
-
-def save_contour(contour: np.ndarray, out_path: str | Path) -> None:
-    np.savetxt(str(out_path), contour)
 
 
 def plot_contour(image: np.ndarray, contour: np.ndarray, title: str = "Detected boundary") -> None:

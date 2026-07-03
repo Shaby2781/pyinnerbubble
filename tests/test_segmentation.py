@@ -1,6 +1,6 @@
 import numpy as np
 
-from pyinnerbubble.geometry.segmentation import mask_to_contour, save_contour
+from pyinnerbubble.geometry.segmentation import mask_to_contour
 
 
 def test_mask_to_contour_square():
@@ -21,13 +21,3 @@ def test_mask_to_contour_empty():
     mask = np.zeros((20, 20), dtype=np.uint8)
 
     assert mask_to_contour(mask) is None
-
-
-def test_save_contour_roundtrip(tmp_path):
-    contour = np.array([[0.0, 0.0], [1.0, 2.0], [3.0, 4.0]])
-    out_path = tmp_path / "contour.txt"
-
-    save_contour(contour, out_path)
-    loaded = np.loadtxt(out_path)
-
-    np.testing.assert_allclose(loaded, contour)
