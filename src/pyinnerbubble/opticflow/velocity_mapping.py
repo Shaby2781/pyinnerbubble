@@ -1,0 +1,242 @@
+"""Map camera-plane optic flow to physical velocity, and smooth it (paper Sec. III B/C boundary).
+
+Converts the dense camera-plane flow field from :func:`compute_optic_flow`
+into physical (x, z) velocity using the spatial derivatives of the ray-traced
+camera<->physical mapping (``physical_x``/``physical_z`` from
+:func:`pyinnerbubble.geometry.build_camera_plane_mapping`), via the chain rule
+-- this is the single-frame version of the MATLAB ``calc_mean_and_steps``
+mapping step, without its multi-frame averaging. Also provides the 2D
+Savitzky-Golay smoothing filter (``sgsdf_2d`` + ``convolve2`` in the original)
+applied to the mapped velocity afterward.
+
+Ported directly from ``div_xsi.m``/``div_eta.m``/``sgsdf_2d.m``:
+
+- ``div_xsi`` is a central-difference (forward/backward at the edges) derivative
+  along axis 1 of its input; ``div_eta`` is the same along axis 0. This matches
+  ``build_camera_plane_mapping``'s own documented convention for
+  ``physical_x``/``physical_z``: axis 0 is "eta", axis 1 is "xsi".
+- ``sgsdf_2d(-r:r, -r:r, order, order, d, 0)`` (the ``flag_coupling=0`` case used
+  here) fits a *separable* polynomial basis {x^order..x^0, y^order..y^1} (no xy
+  cross term) by least squares over the window, and returns the FIR kernel for
+  the x-derivative of order d at the window center; the y-derivative kernel is
+  this kernel's transpose (only valid because x/y ranges and orders match here).
+"""
+
+from __future__ import annotations
+
+from math import factorial
+
+import numpy as np
+from scipy.signal import convolve2d
+
+
+def compute_mapping_derivatives(x_mat: np.ndarray, y_mat: np.ndarray):
+    """Spatial derivatives of the camera<->physical mapping along each grid axis.
+
+    Returns (x_xsi, x_eta, y_xsi, y_eta): central-difference derivatives of
+    x_mat/y_mat along axis 1 ("xsi") and axis 0 ("eta") respectively -- ported
+    from div_xsi.m/div_eta.m (forward/backward difference at the edges, central
+    in the interior; np.gradient matches this along the interior but uses a
+    slightly different one-sided formula at the very edge columns/rows).
+    """
+    x_eta, x_xsi = np.gradient(x_mat)
+    y_eta, y_xsi = np.gradient(y_mat)
+    return x_xsi, x_eta, y_xsi, y_eta
+
+
+def map_camera_flow_to_physical(
+    flow: np.ndarray, x_mat: np.ndarray, y_mat: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Convert camera-plane optic flow to physical velocity via the chain rule.
+
+    Parameters
+    ----------
+    flow : (H, W, 2) array from :func:`compute_optic_flow`.
+    x_mat, y_mat : the physical mapping from
+        :func:`pyinnerbubble.geometry.build_camera_plane_mapping`
+        (``physical_x``/``physical_z``), same (H, W) shape as flow.
+
+    Returns
+    -------
+    u_phys, v_phys : physical velocity components, per frame, same units as
+        flow's input pixels (no averaging across frames, no smoothing applied).
+    """
+    x_xsi, x_eta, y_xsi, y_eta = compute_mapping_derivatives(x_mat, y_mat)
+    flow_0, flow_1 = flow[..., 0], flow[..., 1]
+    u_phys = flow_0 * x_xsi + flow_1 * x_eta
+    v_phys = flow_0 * y_xsi + flow_1 * y_eta
+    return u_phys, v_phys
+
+
+def savgol_2d_kernel(radius: int, order: int = 2, deriv: int = 0) -> np.ndarray:
+    """Build a 2D Savitzky-Golay smoothing/differentiation kernel (x-direction).
+
+    Direct port of ``sgsdf_2d(-radius:radius, -radius:radius, order, order, deriv, 0)``
+    (the flag_coupling=0 case): fits the separable basis
+    {x^order, ..., x^1, x^0, y^order, ..., y^1} (no xy cross term) by least
+    squares over the (2*radius+1) square window, and returns the FIR kernel for
+    the x-derivative of order ``deriv`` at the window center (deriv=0 for pure
+    smoothing), where "x" is axis 0 of the returned kernel. Transpose the
+    result to get the corresponding axis-1 ("y") derivative kernel.
+    """
+    coords = np.arange(-radius, radius + 1, dtype=float)
+    xx, yy = np.meshgrid(coords, coords, indexing="ij")
+    x, y = xx.ravel(), yy.ravel()
+
+    x_terms = [x ** k for k in range(order, -1, -1)]  # x^order, ..., x^1, x^0
+    y_terms = [y ** k for k in range(order, 0, -1)]  # y^order, ..., y^1 (no y^0: redundant with x^0)
+    design = np.column_stack(x_terms + y_terms)
+
+    pseudo_inverse = np.linalg.pinv(design)
+    term_index = order - deriv  # position of the x^deriv column among x_terms
+    kernel = pseudo_inverse[term_index] * factorial(deriv)
+    return kernel.reshape(2 * radius + 1, 2 * radius + 1)
+
+
+def savgol_2d_smooth(field: np.ndarray, radius: int = 7, order: int = 2) -> np.ndarray:
+    """Smooth a 2D field with a 2D Savitzky-Golay filter (local polynomial fit).
+
+    NaNs are filled with 0 before convolving and restored afterward -- values
+    near a NaN region are influenced by those zero-filled neighbors, matching
+    the boundary behavior of the original MATLAB convolve2-based smoothing.
+    """
+    kernel = savgol_2d_kernel(radius, order, deriv=0)
+    nan_mask = np.isnan(field)
+    filled = np.where(nan_mask, 0.0, field)
+    smoothed = convolve2d(filled, kernel, mode="same")
+    smoothed[nan_mask] = np.nan
+    return smoothed
+
+
+def velocity_to_physical_units(u: np.ndarray, v: np.ndarray, px_per_mm: float, frame_rate_hz: float):
+    """Convert velocity from px/frame to m/s, given a pixel scale and frame rate."""
+    scale = frame_rate_hz / px_per_mm / 1000.0  # (frame/s) / (px/mm) * (1 m / 1000 mm) = m/s per px/frame
+    return u * scale, v * scale
+
+
+def plot_velocity_field(
+    x_mat: np.ndarray,
+    y_mat: np.ndarray,
+    u: np.ndarray,
+    v: np.ndarray,
+    px_per_mm: float | None = None,
+    frame_rate_hz: float | None = None,
+    quiver_step: int = 15,
+    save_path=None,
+) -> None:
+    """Plot velocity magnitude as a flat-shaded pcolor (YlOrBr) with a black quiver
+    overlay, in the physical (x_mat, y_mat) coordinate plane.
+
+    Units are px/frame by default. Pass both px_per_mm and frame_rate_hz to plot
+    in m/s instead (e.g. 38 px/mm at a 400 Hz frame rate).
+
+    x_mat/y_mat's -10 sentinel for "outside the bubble" (see
+    build_camera_plane_mapping) is masked to NaN here -- pcolor otherwise draws
+    spurious quads connecting valid interior points to the collapsed (-10, -10)
+    point, since it treats x_mat/y_mat as literal coordinates, not a mask.
+    """
+    import matplotlib.pyplot as plt
+
+    if (px_per_mm is None) != (frame_rate_hz is None):
+        raise ValueError("Provide both px_per_mm and frame_rate_hz, or neither.")
+
+    outside = (x_mat < 0) | (y_mat < 0)
+    x_mat = np.where(outside, np.nan, x_mat)
+    y_mat = np.where(outside, np.nan, y_mat)
+
+    if px_per_mm is not None:
+        u, v = velocity_to_physical_units(u, v, px_per_mm, frame_rate_hz)
+        unit_label = "m/s"
+    else:
+        unit_label = "px/frame"
+
+    magnitude = np.sqrt(u ** 2 + v ** 2)
+
+    fig, ax = plt.subplots()
+    # shading="flat" treats x_mat/y_mat as cell vertices, so C must be one row/
+    # column smaller (matplotlib raises on equal-sized inputs; MATLAB's pcolor
+    # silently drops the last row/col in this situation instead).
+    mesh = ax.pcolor(x_mat, y_mat, magnitude[:-1, :-1], cmap="YlOrBr", shading="flat")
+    cbar = fig.colorbar(mesh, ax=ax)
+    cbar.set_label(f"|u| [{unit_label}]")
+
+    step = quiver_step
+    ax.quiver(
+        x_mat[::step, ::step], y_mat[::step, ::step],
+        u[::step, ::step], v[::step, ::step],
+        color="black",
+    )
+    ax.invert_yaxis()
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    if save_path is not None:
+        plt.savefig(save_path)
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def _parse_args(argv):
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Map camera-plane optic flow to physical velocity, then smooth it."
+    )
+    parser.add_argument("--u-x", required=True, help="Path to u_x.txt (from compute_optic_flow).")
+    parser.add_argument("--u-y", required=True, help="Path to u_y.txt (from compute_optic_flow).")
+    parser.add_argument("--x-mat", required=True, help="Path to x_mat.txt (physical_x from build_camera_plane_mapping).")
+    parser.add_argument("--y-mat", required=True, help="Path to y_mat.txt (physical_z from build_camera_plane_mapping).")
+    parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--smooth-radius", type=int, default=7)
+    parser.add_argument("--smooth-order", type=int, default=2)
+    parser.add_argument("--no-smooth", action="store_true", help="Skip the 2D Savitzky-Golay smoothing step.")
+    parser.add_argument("--plot", action="store_true", help="Save a velocity-magnitude + quiver plot.")
+    parser.add_argument("--px-per-mm", type=float, default=None, help="e.g. 38 -- plot velocity in m/s instead of px/frame.")
+    parser.add_argument("--frame-rate-hz", type=float, default=None, help="e.g. 400 -- required together with --px-per-mm.")
+    parser.add_argument("--quiver-step", type=int, default=15)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    from pathlib import Path
+
+    args = _parse_args(argv)
+
+    u_x = np.loadtxt(args.u_x)
+    u_y = np.loadtxt(args.u_y)
+    x_mat = np.loadtxt(args.x_mat)
+    y_mat = np.loadtxt(args.y_mat)
+    flow = np.stack([u_x, u_y], axis=-1)
+
+    # x_mat/y_mat use -10 as a sentinel for "outside the bubble"
+    # (see build_camera_plane_mapping); mask those before smoothing.
+    outside = (x_mat < 0) | (y_mat < 0)
+    u_phys, v_phys = map_camera_flow_to_physical(flow, x_mat, y_mat)
+    u_phys[outside] = np.nan
+    v_phys[outside] = np.nan
+
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    np.savetxt(out_dir / "u_phys.txt", u_phys)
+    np.savetxt(out_dir / "v_phys.txt", v_phys)
+
+    u_final, v_final = u_phys, v_phys
+    if not args.no_smooth:
+        u_final = savgol_2d_smooth(u_phys, radius=args.smooth_radius, order=args.smooth_order)
+        v_final = savgol_2d_smooth(v_phys, radius=args.smooth_radius, order=args.smooth_order)
+        np.savetxt(out_dir / "u_phys_smooth.txt", u_final)
+        np.savetxt(out_dir / "v_phys_smooth.txt", v_final)
+
+    if args.plot:
+        plot_velocity_field(
+            x_mat, y_mat, u_final, v_final,
+            px_per_mm=args.px_per_mm, frame_rate_hz=args.frame_rate_hz,
+            quiver_step=args.quiver_step, save_path=out_dir / "velocity_field.png",
+        )
+
+    print(f"Saved outputs to {out_dir}")
+
+
+if __name__ == "__main__":
+    main()

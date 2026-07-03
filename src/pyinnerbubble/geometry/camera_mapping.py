@@ -177,17 +177,17 @@ def build_camera_plane_mapping(
     inner_path = MplPath(inner_region_closed)
 
     height, width = plif_image.shape[0], plif_image.shape[1]
-    # NOTE: np.meshgrid(arange(H), arange(W)) with default 'xy' indexing returns
-    # arrays of shape (W, H): xsi_grid[i, j] == j (a height/row index) and
-    # eta_grid[i, j] == i (a width/column index), so (eta_grid[i,j], xsi_grid[i,j])
-    # correctly gives (x, y) = (column, row) pixel coordinates for Path.contains_point.
-    xsi_grid, eta_grid = np.meshgrid(np.arange(0, height, 1), np.arange(0, width, 1))
-    physical_x = eta_grid.astype(float)
-    physical_z = xsi_grid.astype(float)
+    # row_idx/col_idx are (H, W) -- the same shape as plif_image, flow fields, etc.
+    # row_idx[i,j]==i (a row/height index, "xsi"), col_idx[i,j]==j (a column/width
+    # index, "eta"), so (col_idx[i,j], row_idx[i,j]) gives (x, y) = (column, row)
+    # pixel coordinates for Path.contains_point.
+    row_idx, col_idx = np.meshgrid(np.arange(height), np.arange(width), indexing="ij")
+    physical_x = col_idx.astype(float)
+    physical_z = row_idx.astype(float)
 
     for ii in range(physical_x.shape[0]):
         for jj in range(physical_x.shape[1]):
-            point = (eta_grid[ii, jj], xsi_grid[ii, jj])
+            point = (col_idx[ii, jj], row_idx[ii, jj])
             if inner_path.contains_point(point):
                 camera_pos = _ray_trace_camera_point(
                     point, e_up, a_up, y_0_up, a_down, b_down, c_down, mu_oil_gas, mean_x, e_off, z_transition

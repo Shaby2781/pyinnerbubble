@@ -25,7 +25,14 @@ from pyinnerbubble.geometry import (
     reconstruct_bubble_shape,
     segment_largest_contour,
 )
-from pyinnerbubble.opticflow import FarnebackParams, compute_optic_flow, plot_flow_quiver
+from pyinnerbubble.opticflow import (
+    FarnebackParams,
+    compute_optic_flow,
+    map_camera_flow_to_physical,
+    plot_flow_quiver,
+    plot_velocity_field,
+    savgol_2d_smooth,
+)
 
 # ---------------------------------------------------------------------------
 # CONFIG -- one entry per frame
@@ -67,6 +74,10 @@ FARNEBACK_PARAMS = FarnebackParams(
 )
 
 PLOT = True  # each worker SAVES figures to its frame folder -- can't show() across processes
+
+# Physical calibration for the final velocity-field plot (None to plot in px/frame instead).
+PX_PER_MM = 38.0
+FRAME_RATE_HZ = 400.0
 # ---------------------------------------------------------------------------
 
 
@@ -136,11 +147,15 @@ def _process_frame_geometry(frame_number, frame_data, velocity, angle_deg, mu_oi
     np.savetxt(frame_dir / "bubble_shape_tot.txt", mapping_result.bubble_shape_closed)
 
     print(f"[frame {frame_number}] done -> {frame_dir}")
-    return frame_number, shape_result
+    return frame_number, shape_result, mapping_result
 
 
-def _compute_optic_flow_between_frames(frame_a, frame_b, plif_a_cropped, plif_b_cropped, out_dir):
-    """Optic flow between two consecutive PLIF frames' cropped, pixel-aligned images."""
+def _compute_optic_flow_between_frames(frame_a, frame_b, plif_a_cropped, plif_b_cropped, mapping_a, out_dir):
+    """Optic flow between two consecutive, pixel-aligned cropped PLIF frames, then
+    mapped to physical velocity (using frame_a's own mapping, since flow_a->b is
+    defined on frame_a's cropped pixel grid) and smoothed with a 2D Savitzky-Golay
+    filter -- the single-frame version of the MATLAB calc_mean_and_steps mapping
+    step, without its multi-frame averaging."""
     print(f"[opticflow {frame_a}->{frame_b}] computing Farneback flow...")
     flow = compute_optic_flow(plif_a_cropped, plif_b_cropped, FARNEBACK_PARAMS)
 
@@ -149,6 +164,24 @@ def _compute_optic_flow_between_frames(frame_a, frame_b, plif_a_cropped, plif_b_
     np.savetxt(flow_dir / "u_x.txt", flow[..., 0])
     np.savetxt(flow_dir / "u_y.txt", flow[..., 1])
     plot_flow_quiver(plif_a_cropped, flow, save_path=flow_dir / "quiver.png")
+
+    outside = (mapping_a.physical_x < 0) | (mapping_a.physical_z < 0)
+    u_phys, v_phys = map_camera_flow_to_physical(flow, mapping_a.physical_x, mapping_a.physical_z)
+    u_phys[outside] = np.nan
+    v_phys[outside] = np.nan
+    u_phys_smooth = savgol_2d_smooth(u_phys)
+    v_phys_smooth = savgol_2d_smooth(v_phys)
+    np.savetxt(flow_dir / "u_phys.txt", u_phys)
+    np.savetxt(flow_dir / "v_phys.txt", v_phys)
+    np.savetxt(flow_dir / "u_phys_smooth.txt", u_phys_smooth)
+    np.savetxt(flow_dir / "v_phys_smooth.txt", v_phys_smooth)
+
+    plot_velocity_field(
+        mapping_a.physical_x, mapping_a.physical_z, u_phys_smooth, v_phys_smooth,
+        px_per_mm=PX_PER_MM, frame_rate_hz=FRAME_RATE_HZ,
+        save_path=flow_dir / "velocity_field.png",
+    )
+
     print(f"[opticflow {frame_a}->{frame_b}] done -> {flow_dir}")
 
 
@@ -165,12 +198,13 @@ def main():
 
     # Reference frame runs first (sequentially) to establish the shared crop window
     # that every other frame will reuse, so all frames' cropped images stay aligned.
-    _, reference_shape_result = _process_frame_geometry(
+    _, reference_shape_result, reference_mapping_result = _process_frame_geometry(
         reference_frame, frame_data[reference_frame],
         VELOCITY_PX_PER_FRAME, ANGLE_TO_ROTATE_DEG, MU_OIL_GAS, OUT_DIR, PLOT,
     )
     shared_crop_size = reference_shape_result.crop_size
     shape_results = {reference_frame: reference_shape_result}
+    mapping_results = {reference_frame: reference_mapping_result}
 
     if other_frames:
         with ProcessPoolExecutor(max_workers=min(MAX_WORKERS, len(other_frames))) as executor:
@@ -182,13 +216,15 @@ def main():
                 for frame_number in other_frames
             }
             for frame_number, future in futures.items():
-                _, shape_result = future.result()
+                _, shape_result, mapping_result = future.result()
                 shape_results[frame_number] = shape_result
+                mapping_results[frame_number] = mapping_result
 
     for frame_a, frame_b in zip(frame_numbers, frame_numbers[1:]):
         _compute_optic_flow_between_frames(
             frame_a, frame_b,
             shape_results[frame_a].plif_image_cropped, shape_results[frame_b].plif_image_cropped,
+            mapping_results[frame_a],
             OUT_DIR,
         )
 
