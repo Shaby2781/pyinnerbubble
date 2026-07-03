@@ -44,6 +44,9 @@ dev = ["pytest", "pytest-cov", "ruff"]
 Homepage = "https://github.com/REPLACE_ME/pyinnerbubble"
 Issues = "https://github.com/REPLACE_ME/pyinnerbubble/issues"
 
+[project.scripts]
+pyinnerbubble-segment = "pyinnerbubble.geometry.segmentation:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/pyinnerbubble"]
 
