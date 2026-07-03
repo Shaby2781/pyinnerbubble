@@ -122,6 +122,8 @@ def plot_velocity_field(
     px_per_mm: float | None = None,
     frame_rate_hz: float | None = None,
     quiver_step: int = 15,
+    quiver_scale: float | None = None,
+    quiver_width: float | None = None,
     vmin: float | None = None,
     vmax: float | None = None,
     save_path=None,
@@ -134,6 +136,11 @@ def plot_velocity_field(
 
     vmin/vmax fix the colorbar range (matching MATLAB's caxis/clim), e.g.
     vmin=0, vmax=0.5 for m/s. Defaults to auto-scaling from the data.
+
+    quiver_scale : data units per arrow-length unit (matplotlib's quiver ``scale``).
+        Smaller values draw LONGER arrows; None auto-scales from the data.
+    quiver_width : arrow shaft width, as a fraction of the plot width (matplotlib's
+        quiver ``width``); None uses matplotlib's default (~0.005).
 
     x_mat/y_mat's -10 sentinel for "outside the bubble" (see
     build_camera_plane_mapping) is masked to NaN here -- pcolor otherwise draws
@@ -166,10 +173,13 @@ def plot_velocity_field(
     cbar.set_label(f"|u| [{unit_label}]")
 
     step = quiver_step
+    # angles="xy" is required so the arrow direction is computed from the actual
+    # data-coordinate displacement (and thus respects invert_yaxis() below);
+    # the default angles="uv" ignores axis inversion and renders v upside down.
     ax.quiver(
         x_mat[::step, ::step], y_mat[::step, ::step],
         u[::step, ::step], v[::step, ::step],
-        color="black",
+        color="black", angles="xy", scale=quiver_scale, width=quiver_width,
     )
     ax.invert_yaxis()
     ax.set_aspect("equal")
@@ -200,6 +210,8 @@ def _parse_args(argv):
     parser.add_argument("--px-per-mm", type=float, default=None, help="e.g. 38 -- plot velocity in m/s instead of px/frame.")
     parser.add_argument("--frame-rate-hz", type=float, default=None, help="e.g. 400 -- required together with --px-per-mm.")
     parser.add_argument("--quiver-step", type=int, default=15)
+    parser.add_argument("--quiver-scale", type=float, default=None, help="Data units per arrow length; smaller = longer arrows.")
+    parser.add_argument("--quiver-width", type=float, default=None, help="Arrow shaft width, fraction of plot width.")
     parser.add_argument("--vmin", type=float, default=None, help="Colorbar lower bound, e.g. 0.")
     parser.add_argument("--vmax", type=float, default=None, help="Colorbar upper bound, e.g. 0.5.")
     return parser.parse_args(argv)
@@ -239,7 +251,8 @@ def main(argv: list[str] | None = None) -> None:
         plot_velocity_field(
             x_mat, y_mat, u_final, v_final,
             px_per_mm=args.px_per_mm, frame_rate_hz=args.frame_rate_hz,
-            quiver_step=args.quiver_step, vmin=args.vmin, vmax=args.vmax,
+            quiver_step=args.quiver_step, quiver_scale=args.quiver_scale, quiver_width=args.quiver_width,
+            vmin=args.vmin, vmax=args.vmax,
             save_path=out_dir / "velocity_field.png",
         )
 

@@ -21,8 +21,31 @@ Work in progress — scripts are being migrated from research code into this pac
 
 ## Installation
 
+For users, once this repo is on GitHub:
+
 ```bash
-pip install -e ".[dev]"
+pip install git+https://github.com/REPLACE_ME/pyinnerbubble.git
+```
+
+Add the `segmentation` extra (torch + segment-anything) if you need the SAM-based
+contour segmentation in `pyinnerbubble.geometry.segmentation`:
+
+```bash
+pip install "pyinnerbubble[segmentation] @ git+https://github.com/REPLACE_ME/pyinnerbubble.git"
+```
+
+Requires Python >=3.10. The SAM model checkpoint (e.g. `sam_vit_h_4b8939.pth`) is not
+included in this repo -- download it separately from the
+[segment-anything releases](https://github.com/facebookresearch/segment-anything#model-checkpoints)
+and point your script at its local path.
+
+For development (editable install, running the test suite):
+
+```bash
+git clone https://github.com/REPLACE_ME/pyinnerbubble.git
+cd pyinnerbubble
+pip install -e ".[dev,segmentation]"
+pytest
 ```
 
 ## License

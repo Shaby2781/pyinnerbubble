@@ -80,6 +80,13 @@ PLOT = True  # each worker SAVES figures to its frame folder -- can't show() acr
 # Physical calibration for the final velocity-field plot (None to plot in px/frame instead).
 PX_PER_MM = 38.0  # camera resolution, pixels per millimeter
 FRAME_RATE_HZ = 400.0  # camera frame rate, Hz
+
+# Quiver appearance on the final velocity-field plot.
+QUIVER_STEP = 30  # px stride between plotted arrows (smaller = denser)
+QUIVER_SCALE = None  # data units per arrow length; smaller = LONGER arrows; None = auto
+QUIVER_WIDTH = None  # arrow shaft width, fraction of plot width; None = matplotlib default (~0.005)
+VMIN = 0
+VMAX = 0.5 * 0.2
 # ---------------------------------------------------------------------------
 
 
@@ -181,7 +188,8 @@ def _compute_optic_flow_between_frames(frame_a, frame_b, plif_a_cropped, plif_b_
     plot_velocity_field(
         mapping_a.physical_x, mapping_a.physical_z, u_phys_smooth, v_phys_smooth,
         px_per_mm=PX_PER_MM, frame_rate_hz=FRAME_RATE_HZ,
-        vmin=0, vmax=0.5*0.2, quiver_step=30,
+        vmin=VMIN, vmax=VMAX,
+        quiver_step=QUIVER_STEP, quiver_scale=QUIVER_SCALE, quiver_width=QUIVER_WIDTH,
         save_path=flow_dir / "velocity_field.png",
     )
 
