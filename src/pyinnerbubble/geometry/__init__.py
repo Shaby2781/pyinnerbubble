@@ -6,7 +6,7 @@ and builds the camera-plane <-> bubble-plane ray-traced mapping.
 """
 
 from .camera_mapping import CameraMappingResult, build_camera_plane_mapping
-from .segmentation import mask_to_contour, segment_largest_contour
+from .segmentation import load_predictor, mask_to_contour, segment_largest_contour
 from .shape_reconstruction import (
     BubbleShapeResult,
     CropParams,
@@ -18,6 +18,7 @@ from .shape_reconstruction import (
 __all__ = [
     "mask_to_contour",
     "segment_largest_contour",
+    "load_predictor",
     "reconstruct_bubble_shape",
     "CropParams",
     "BubbleShapeResult",

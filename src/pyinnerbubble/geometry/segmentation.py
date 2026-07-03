@@ -43,10 +43,13 @@ def mask_to_contour(mask: np.ndarray) -> np.ndarray | None:
     """Extract the largest external contour from a binary mask.
 
     Returns an (N, 2) array of (x, y) pixel coordinates, or None if the mask
-    contains no contours.
+    contains no contours. Uses CHAIN_APPROX_NONE (every boundary pixel, not just
+    corners) since downstream curve fitting/smoothing in shape_reconstruction
+    assumes reasonably dense sampling -- CHAIN_APPROX_SIMPLE can compress a smooth
+    mask edge down to too few points for that.
     """
     contours, _ = cv2.findContours(
-        mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
     )
     if not contours:
         return None

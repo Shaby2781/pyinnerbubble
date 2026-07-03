@@ -331,6 +331,8 @@ def reconstruct_bubble_shape(
 
     shadow_graph_curve1[:, 0] -= mean_r
     shadow_graph_curve2[:, 0] -= mean_r
+    shadow_graph_curve_base_side1 = shadow_graph_curve_base_side1.copy()
+    shadow_graph_curve_base_side1[:, 0] -= mean_r
 
     a_up, b_up, y_0_up = fit_cap_ellipse(shadow_graph_curve1)
 

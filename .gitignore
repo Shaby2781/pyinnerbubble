@@ -11,4 +11,8 @@ venv/
 *.avi
 *.tif
 *.tiff
+*.jpg
+*.jpeg
+*.png
 .ipynb_checkpoints/
+/output/
