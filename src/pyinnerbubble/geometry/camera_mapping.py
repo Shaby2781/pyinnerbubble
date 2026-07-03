@@ -92,7 +92,7 @@ def _ray_trace_camera_point(point, e_up, r_up, z0_up, a_exp, b_exp, c_exp, mu_oi
     return camera_pos
 
 
-def _plot_mapping(plif_image, bubble_shape_closed, inner_region, ellipse_up_points, exp_curve, exp_curve_z, mean_x, physical_x, physical_z):
+def _plot_mapping(plif_image, bubble_shape_closed, inner_region, ellipse_up_points, exp_curve, exp_curve_z, mean_x, physical_x, physical_z, save_dir=None):
     import matplotlib.pyplot as plt
 
     plt.figure()
@@ -101,6 +101,9 @@ def _plot_mapping(plif_image, bubble_shape_closed, inner_region, ellipse_up_poin
     plt.plot(inner_region[:, 0], inner_region[:, 1])
     plt.plot(ellipse_up_points[:, 0] + mean_x, ellipse_up_points[:, 1])
     plt.plot(exp_curve + mean_x, exp_curve_z, ":", color="k")
+    if save_dir is not None:
+        plt.savefig(FilePath(save_dir) / "mapping_overlay.png")
+        plt.close()
 
     x_plot, z_plot = physical_x.copy(), physical_z.copy()
     x_plot[x_plot < 0] = np.nan
@@ -115,7 +118,11 @@ def _plot_mapping(plif_image, bubble_shape_closed, inner_region, ellipse_up_poin
     ax.set_title("2D deformed structured mesh")
     ax.set_xlabel(r"$\xi$ (X)")
     ax.set_ylabel(r"$\eta$ (Y)")
-    plt.show()
+    if save_dir is not None:
+        plt.savefig(FilePath(save_dir) / "mesh.png")
+        plt.close()
+    else:
+        plt.show()
 
 
 def build_camera_plane_mapping(
@@ -126,7 +133,7 @@ def build_camera_plane_mapping(
     mu_oil_gas: float = 1.405,
     e_off: float = 1.0,
     z_transition_margin: float = 45.0,
-    plot: bool = False,
+    plot: bool | str | FilePath = False,
 ) -> CameraMappingResult:
     """Build the camera-plane -> physical-plane coordinate mapping for one frame.
 
@@ -143,7 +150,11 @@ def build_camera_plane_mapping(
     z_transition_margin : the cap-ellipse fit is used for camera points up to
         ``z_0_up + z_transition_margin``, and the base exponential fit beyond that,
         to smooth the seam between the two regions.
-    plot : if True, display the reconstructed mesh overlaid on the image.
+    plot : if True, display the reconstructed mesh overlaid on the image. Pass a
+        directory path instead to save the figures there rather than showing them --
+        required when calling this from a worker process (e.g. via
+        ``ProcessPoolExecutor``), since interactive display doesn't work across
+        process boundaries.
     """
     bubble_shape_for_ellipse = bubble_shape.copy()
     bubble_shape_for_ellipse[:, 0] -= mean_x
@@ -188,11 +199,13 @@ def build_camera_plane_mapping(
                 physical_z[ii, jj] = -10.0
 
     if plot:
+        save_dir = plot if isinstance(plot, (str, FilePath)) else None
         ellipse_up_points = generate_ellipse_points_shifted(a_up, b_up, y_0_up)
         exp_curve = _exp_value(curve_down[:, 1], a_down, b_down, c_down, y_0_up)
         _plot_mapping(
             plif_image, bubble_shape_closed, inner_region_closed,
             ellipse_up_points, exp_curve, curve_down[:, 1], mean_x, physical_x, physical_z,
+            save_dir=save_dir,
         )
 
     return CameraMappingResult(

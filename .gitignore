@@ -16,3 +16,4 @@ venv/
 *.png
 .ipynb_checkpoints/
 /output/
+.idea/

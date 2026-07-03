@@ -258,17 +258,22 @@ def _calc_edge_position_one_ellipse_exp(
     return real_shape
 
 
-def _plot_reconstruction(plif_image, shadowgraph_image, inner_region, real_shape, rot_plif_contour):
+def _plot_reconstruction(plif_image, shadowgraph_image, inner_region, real_shape, rot_plif_contour, save_dir=None):
     import matplotlib.pyplot as plt
 
-    for image in (plif_image, shadowgraph_image):
+    names = ("plif_overlay.png", "shadowgraph_overlay.png")
+    for image, name in zip((plif_image, shadowgraph_image), names):
         plt.figure()
         plt.imshow(image, cmap="gray")
         plt.plot(inner_region[:, 0], inner_region[:, 1], color=_MATLAB_GREEN)
         plt.plot(real_shape[:, 0], real_shape[:, 1], color=_MATLAB_BLUE)
         plt.plot(rot_plif_contour[:, 0], rot_plif_contour[:, 1], color=_MATLAB_ORANGE, linestyle="--")
         plt.axis("off")
-    plt.show()
+        if save_dir is not None:
+            plt.savefig(Path(save_dir) / name)
+            plt.close()
+    if save_dir is None:
+        plt.show()
 
 
 def reconstruct_bubble_shape(
@@ -280,7 +285,7 @@ def reconstruct_bubble_shape(
     angle_to_rotate: float = -np.pi / 180,
     mu_oil_gas: float = 1.405,
     crop: CropParams | None = None,
-    plot: bool = False,
+    plot: bool | str | Path = False,
 ) -> BubbleShapeResult:
     """Reconstruct the physical bubble profile for a single frame.
 
@@ -294,6 +299,10 @@ def reconstruct_bubble_shape(
     crop : cropping margins for the returned images; pass a previous frame's
         ``crop_size`` in to keep a fixed crop window across a sequence.
     plot : if True, display the reconstructed profile overlaid on both images.
+        Pass a directory path instead to save the figures there rather than
+        showing them -- required when calling this from a worker process (e.g.
+        via ``ProcessPoolExecutor``), since interactive display doesn't work
+        across process boundaries.
     """
     if crop is None:
         crop = CropParams()
@@ -411,7 +420,11 @@ def reconstruct_bubble_shape(
     rot_plif_contour[:, 1] -= y_min_lim
 
     if plot:
-        _plot_reconstruction(plif_image_cropped, shadowgraph_image_cropped, inner_region, real_shape, rot_plif_contour)
+        save_dir = plot if isinstance(plot, (str, Path)) else None
+        _plot_reconstruction(
+            plif_image_cropped, shadowgraph_image_cropped, inner_region, real_shape, rot_plif_contour,
+            save_dir=save_dir,
+        )
 
     return BubbleShapeResult(
         real_shape=real_shape,
