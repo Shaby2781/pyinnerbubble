@@ -19,11 +19,13 @@ import cv2
 import numpy as np
 
 from pyinnerbubble.geometry import (
+    CropParams,
     build_camera_plane_mapping,
     load_predictor,
     reconstruct_bubble_shape,
     segment_largest_contour,
 )
+from pyinnerbubble.opticflow import FarnebackParams, compute_optic_flow, plot_flow_quiver
 
 # ---------------------------------------------------------------------------
 # CONFIG -- one entry per frame
@@ -55,6 +57,14 @@ FRAMES = {
 VELOCITY_PX_PER_FRAME = 23.0
 ANGLE_TO_ROTATE_DEG = -1.0
 MU_OIL_GAS = 1.405
+
+# Matches the MATLAB opticalFlowFarneback config this project was validated with:
+# NumPyramidLevels=3, PyramidScale=0.5, NumIterations=3, NeighborhoodSize=1, FilterSize=15.
+# poly_sigma has no MATLAB-side equivalent that was set -- double check this value.
+FARNEBACK_PARAMS = FarnebackParams(
+    num_pyramid_levels=3, pyramid_scale=0.5, num_iterations=3,
+    neighborhood_size=1, filter_size=15, poly_sigma=1.1,
+)
 
 PLOT = True  # each worker SAVES figures to its frame folder -- can't show() across processes
 # ---------------------------------------------------------------------------
@@ -89,12 +99,19 @@ def _segment_frame(frame_number, config, predictor):
     }
 
 
-def _process_frame_geometry(frame_number, frame_data, velocity, angle_deg, mu_oil_gas, out_dir, plot):
+def _process_frame_geometry(frame_number, frame_data, velocity, angle_deg, mu_oil_gas, out_dir, plot, crop_size=None):
     """Reconstruction + camera mapping for one frame -- pure numerics, no SAM/torch,
-    safe to run in a worker process."""
+    safe to run in a worker process.
+
+    If crop_size is given, the crop window is fixed to that size instead of being
+    auto-computed from this frame alone, so this frame's cropped images stay
+    pixel-aligned with whichever frame produced crop_size (needed before optic
+    flow can meaningfully compare two frames' cropped PLIF images).
+    """
     frame_dir = Path(out_dir) / f"frame_{frame_number:04d}"
     frame_dir.mkdir(parents=True, exist_ok=True)
     plot_arg = frame_dir if plot else False
+    crop = CropParams(crop_size=crop_size) if crop_size is not None else None
 
     shape_result = reconstruct_bubble_shape(
         frame_data["shadowgraph_image"], frame_data["plif_image"],
@@ -102,6 +119,7 @@ def _process_frame_geometry(frame_number, frame_data, velocity, angle_deg, mu_oi
         velocity_px_per_frame=velocity,
         angle_to_rotate=np.deg2rad(angle_deg),
         mu_oil_gas=mu_oil_gas,
+        crop=crop,
         plot=plot_arg,
     )
     np.savetxt(frame_dir / "bubble_contour.txt", shape_result.real_shape)
@@ -118,7 +136,20 @@ def _process_frame_geometry(frame_number, frame_data, velocity, angle_deg, mu_oi
     np.savetxt(frame_dir / "bubble_shape_tot.txt", mapping_result.bubble_shape_closed)
 
     print(f"[frame {frame_number}] done -> {frame_dir}")
-    return frame_number
+    return frame_number, shape_result
+
+
+def _compute_optic_flow_between_frames(frame_a, frame_b, plif_a_cropped, plif_b_cropped, out_dir):
+    """Optic flow between two consecutive PLIF frames' cropped, pixel-aligned images."""
+    print(f"[opticflow {frame_a}->{frame_b}] computing Farneback flow...")
+    flow = compute_optic_flow(plif_a_cropped, plif_b_cropped, FARNEBACK_PARAMS)
+
+    flow_dir = Path(out_dir) / f"opticflow_{frame_a:04d}_{frame_b:04d}"
+    flow_dir.mkdir(parents=True, exist_ok=True)
+    np.savetxt(flow_dir / "u_x.txt", flow[..., 0])
+    np.savetxt(flow_dir / "u_y.txt", flow[..., 1])
+    plot_flow_quiver(plif_a_cropped, flow, save_path=flow_dir / "quiver.png")
+    print(f"[opticflow {frame_a}->{frame_b}] done -> {flow_dir}")
 
 
 def main():
@@ -129,16 +160,37 @@ def main():
         for frame_number, config in FRAMES.items()
     }
 
-    with ProcessPoolExecutor(max_workers=min(MAX_WORKERS, len(FRAMES))) as executor:
-        futures = [
-            executor.submit(
-                _process_frame_geometry, frame_number, data,
-                VELOCITY_PX_PER_FRAME, ANGLE_TO_ROTATE_DEG, MU_OIL_GAS, OUT_DIR, PLOT,
-            )
-            for frame_number, data in frame_data.items()
-        ]
-        for future in futures:
-            future.result()
+    frame_numbers = sorted(frame_data)
+    reference_frame, other_frames = frame_numbers[0], frame_numbers[1:]
+
+    # Reference frame runs first (sequentially) to establish the shared crop window
+    # that every other frame will reuse, so all frames' cropped images stay aligned.
+    _, reference_shape_result = _process_frame_geometry(
+        reference_frame, frame_data[reference_frame],
+        VELOCITY_PX_PER_FRAME, ANGLE_TO_ROTATE_DEG, MU_OIL_GAS, OUT_DIR, PLOT,
+    )
+    shared_crop_size = reference_shape_result.crop_size
+    shape_results = {reference_frame: reference_shape_result}
+
+    if other_frames:
+        with ProcessPoolExecutor(max_workers=min(MAX_WORKERS, len(other_frames))) as executor:
+            futures = {
+                frame_number: executor.submit(
+                    _process_frame_geometry, frame_number, frame_data[frame_number],
+                    VELOCITY_PX_PER_FRAME, ANGLE_TO_ROTATE_DEG, MU_OIL_GAS, OUT_DIR, PLOT, shared_crop_size,
+                )
+                for frame_number in other_frames
+            }
+            for frame_number, future in futures.items():
+                _, shape_result = future.result()
+                shape_results[frame_number] = shape_result
+
+    for frame_a, frame_b in zip(frame_numbers, frame_numbers[1:]):
+        _compute_optic_flow_between_frames(
+            frame_a, frame_b,
+            shape_results[frame_a].plif_image_cropped, shape_results[frame_b].plif_image_cropped,
+            OUT_DIR,
+        )
 
     print("All frames processed.")
 
