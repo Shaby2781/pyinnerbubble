@@ -122,6 +122,8 @@ def plot_velocity_field(
     px_per_mm: float | None = None,
     frame_rate_hz: float | None = None,
     quiver_step: int = 15,
+    vmin: float | None = None,
+    vmax: float | None = None,
     save_path=None,
 ) -> None:
     """Plot velocity magnitude as a flat-shaded pcolor (YlOrBr) with a black quiver
@@ -129,6 +131,9 @@ def plot_velocity_field(
 
     Units are px/frame by default. Pass both px_per_mm and frame_rate_hz to plot
     in m/s instead (e.g. 38 px/mm at a 400 Hz frame rate).
+
+    vmin/vmax fix the colorbar range (matching MATLAB's caxis/clim), e.g.
+    vmin=0, vmax=0.5 for m/s. Defaults to auto-scaling from the data.
 
     x_mat/y_mat's -10 sentinel for "outside the bubble" (see
     build_camera_plane_mapping) is masked to NaN here -- pcolor otherwise draws
@@ -156,7 +161,7 @@ def plot_velocity_field(
     # shading="flat" treats x_mat/y_mat as cell vertices, so C must be one row/
     # column smaller (matplotlib raises on equal-sized inputs; MATLAB's pcolor
     # silently drops the last row/col in this situation instead).
-    mesh = ax.pcolor(x_mat, y_mat, magnitude[:-1, :-1], cmap="YlOrBr", shading="flat")
+    mesh = ax.pcolor(x_mat, y_mat, magnitude[:-1, :-1], cmap="YlOrBr", shading="flat", vmin=vmin, vmax=vmax)
     cbar = fig.colorbar(mesh, ax=ax)
     cbar.set_label(f"|u| [{unit_label}]")
 
@@ -195,6 +200,8 @@ def _parse_args(argv):
     parser.add_argument("--px-per-mm", type=float, default=None, help="e.g. 38 -- plot velocity in m/s instead of px/frame.")
     parser.add_argument("--frame-rate-hz", type=float, default=None, help="e.g. 400 -- required together with --px-per-mm.")
     parser.add_argument("--quiver-step", type=int, default=15)
+    parser.add_argument("--vmin", type=float, default=None, help="Colorbar lower bound, e.g. 0.")
+    parser.add_argument("--vmax", type=float, default=None, help="Colorbar upper bound, e.g. 0.5.")
     return parser.parse_args(argv)
 
 
@@ -232,7 +239,8 @@ def main(argv: list[str] | None = None) -> None:
         plot_velocity_field(
             x_mat, y_mat, u_final, v_final,
             px_per_mm=args.px_per_mm, frame_rate_hz=args.frame_rate_hz,
-            quiver_step=args.quiver_step, save_path=out_dir / "velocity_field.png",
+            quiver_step=args.quiver_step, vmin=args.vmin, vmax=args.vmax,
+            save_path=out_dir / "velocity_field.png",
         )
 
     print(f"Saved outputs to {out_dir}")

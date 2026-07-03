@@ -37,19 +37,21 @@ from pyinnerbubble.opticflow import (
 # ---------------------------------------------------------------------------
 # CONFIG -- one entry per frame
 # ---------------------------------------------------------------------------
-SAM_CHECKPOINT = r"C:\royi\temp_python_prog\meta\sam_vit_h_4b8939.pth"
-SAM_MODEL_TYPE = "vit_h"
-OUT_DIR = r"C:\royi\Clude_python_lib\output"
-MAX_WORKERS = 4
+SAM_CHECKPOINT = r"C:\royi\temp_python_prog\meta\sam_vit_h_4b8939.pth"  # local path to the downloaded SAM model weights
+SAM_MODEL_TYPE = "vit_h"  # must match the checkpoint above (vit_h/vit_l/vit_b)
+OUT_DIR = r"C:\royi\Clude_python_lib\output"  # all per-frame and per-flow-pair results are written under here
+MAX_WORKERS = 4  # max parallel processes for the reconstruction+mapping step (per-frame, CPU-bound)
 
 FRAMES = {
+    # Each entry is one recorded frame pair (shadowgraph + PLIF) to process.
+    # Dict key (24, 25, ...) is the frame number, used only for labeling output folders.
     24: dict(
-        shadowgraph_image=r"C:\royi\Clude_python_lib\shadowgraph0024.jpg",
-        plif_image=r"C:\royi\Clude_python_lib\piv0024.jpg",
-        shadowgraph_foreground=np.array([[614, 640]]),
-        shadowgraph_background=np.array([[320, 192]]),
-        plif_foreground=np.array([[995, 850]]),
-        plif_background=np.array([[995, 995]]),
+        shadowgraph_image=r"C:\royi\Clude_python_lib\shadowgraph0024.jpg",  # path to this frame's shadowgraph image
+        plif_image=r"C:\royi\Clude_python_lib\piv0024.jpg",  # path to this frame's PLIF image
+        shadowgraph_foreground=np.array([[614, 640]]),  # (x, y) pixel inside the bubble, in the shadowgraph image
+        shadowgraph_background=np.array([[320, 192]]),  # (x, y) pixel outside the bubble (plain background), shadowgraph image
+        plif_foreground=np.array([[995, 850]]),  # (x, y) pixel inside the illuminated PLIF region
+        plif_background=np.array([[995, 995]]),  # (x, y) pixel outside the illuminated PLIF region (dark background)
     ),
     25: dict(
         shadowgraph_image=r"C:\royi\Clude_python_lib\shadowgraph0025.jpg",
@@ -61,9 +63,9 @@ FRAMES = {
     ),
 }
 
-VELOCITY_PX_PER_FRAME = 23.0
-ANGLE_TO_ROTATE_DEG = -1.0
-MU_OIL_GAS = 1.405
+VELOCITY_PX_PER_FRAME = 23.0  # bubble rise speed, px/frame -- used to correct the shadowgraph/PLIF sub-frame time offset
+ANGLE_TO_ROTATE_DEG = -1.0  # camera/bubble tilt correction applied before reconstruction
+MU_OIL_GAS = 1.405  # refractive index ratio (oil / gas) used in the Snell's-law ray tracing
 
 # Matches the MATLAB opticalFlowFarneback config this project was validated with:
 # NumPyramidLevels=3, PyramidScale=0.5, NumIterations=3, NeighborhoodSize=1, FilterSize=15.
@@ -76,8 +78,8 @@ FARNEBACK_PARAMS = FarnebackParams(
 PLOT = True  # each worker SAVES figures to its frame folder -- can't show() across processes
 
 # Physical calibration for the final velocity-field plot (None to plot in px/frame instead).
-PX_PER_MM = 38.0
-FRAME_RATE_HZ = 400.0
+PX_PER_MM = 38.0  # camera resolution, pixels per millimeter
+FRAME_RATE_HZ = 400.0  # camera frame rate, Hz
 # ---------------------------------------------------------------------------
 
 
@@ -179,6 +181,7 @@ def _compute_optic_flow_between_frames(frame_a, frame_b, plif_a_cropped, plif_b_
     plot_velocity_field(
         mapping_a.physical_x, mapping_a.physical_z, u_phys_smooth, v_phys_smooth,
         px_per_mm=PX_PER_MM, frame_rate_hz=FRAME_RATE_HZ,
+        vmin=0, vmax=0.5*0.2, quiver_step=30,
         save_path=flow_dir / "velocity_field.png",
     )
 
