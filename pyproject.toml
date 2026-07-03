@@ -48,6 +48,7 @@ Issues = "https://github.com/REPLACE_ME/pyinnerbubble/issues"
 [project.scripts]
 pyinnerbubble-segment = "pyinnerbubble.geometry.segmentation:main"
 pyinnerbubble-reconstruct-shape = "pyinnerbubble.geometry.shape_reconstruction:main"
+pyinnerbubble-camera-mapping = "pyinnerbubble.geometry.camera_mapping:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pyinnerbubble"]

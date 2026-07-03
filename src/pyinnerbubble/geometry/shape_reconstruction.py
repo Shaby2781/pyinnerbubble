@@ -16,7 +16,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
-from scipy.optimize import curve_fit, fsolve, least_squares
+from scipy.optimize import curve_fit, fsolve
 from scipy.signal import savgol_filter
 from shapely.geometry import LineString, Point
 
@@ -53,7 +53,9 @@ class BubbleShapeResult:
     shadowgraph_image_cropped: np.ndarray
     crop_size: tuple[float, float]
     mean_r: float
+    """Contour centroid r, in the same cropped pixel frame as ``real_shape``/``inner_region``."""
     mean_z: float
+    """Contour centroid z, in the same cropped pixel frame as ``real_shape``/``inner_region``."""
     shadow_leading_edge_y: float
     fit_params: dict
 
@@ -97,20 +99,21 @@ def find_intersections_shapely(curve1: np.ndarray, curve2: np.ndarray):
     return np.array(results), np.array(indices1), np.array(indices2)
 
 
-def _find_b_down(points: np.ndarray, a: float, y0: float) -> float:
-    if len(points) < 3:
-        raise ValueError("Need at least 3 points to fit an ellipse with 3 parameters")
-    x, y = points[:, 0], points[:, 1]
+def fit_cap_ellipse(curve_up: np.ndarray) -> tuple[float, float, float]:
+    """Fit the cap as an axis-aligned ellipse directly from its (x, y) extents.
 
-    def residuals(b, x, y, a, y0):
-        return x ** 2 / a ** 2 + (y - y0) ** 2 / b ** 2 - 1
+    Returns (a_up, b_up, y_0_up): the x semi-axis, y semi-axis, and y-center.
+    """
+    a_up = -np.min(curve_up[:, 0])
+    y_0_up = np.max(curve_up[:, 1])
+    b_up = y_0_up - np.min(curve_up[:, 1])
+    return a_up, b_up, y_0_up
 
-    result = least_squares(
-        residuals, [np.max(np.abs(y - y0))], args=(x, y, a, y0), bounds=([1e-6], [np.inf])
-    )
-    if not result.success:
-        raise ValueError(f"Fitting failed: {result.message}")
-    return result.x[0]
+
+def generate_ellipse_points_shifted(a: float, b: float, y_0: float, num_points: int = 100) -> np.ndarray:
+    """Generate points on an ellipse of semi-axes (a, b) centered at (0, y_0)."""
+    t = np.linspace(0, 2 * np.pi, num_points)
+    return np.column_stack((a * np.cos(t), b * np.sin(t) + y_0))
 
 
 def _exp_value(z, a, b, c, z_ref):
@@ -329,9 +332,7 @@ def reconstruct_bubble_shape(
     shadow_graph_curve1[:, 0] -= mean_r
     shadow_graph_curve2[:, 0] -= mean_r
 
-    a_up = -np.min(shadow_graph_curve1[:, 0])
-    y_0_up = np.max(shadow_graph_curve1[:, 1])
-    b_up = y_0_up - np.min(shadow_graph_curve1[:, 1])
+    a_up, b_up, y_0_up = fit_cap_ellipse(shadow_graph_curve1)
 
     z_min_down = np.min(shadow_graph_curve2[:, 1])
     popt, _ = curve_fit(
@@ -417,8 +418,8 @@ def reconstruct_bubble_shape(
         plif_image_cropped=plif_image_cropped,
         shadowgraph_image_cropped=shadowgraph_image_cropped,
         crop_size=(delta_x_frame, delta_y_frame),
-        mean_r=float(mean_r),
-        mean_z=float(mean_z),
+        mean_r=float(mean_r - x_min_lim),
+        mean_z=float(mean_z - y_min_lim),
         shadow_leading_edge_y=shadow_leading_edge_y,
         fit_params={
             "a_up": a_up, "b_up": b_up, "y_0_up": y_0_up,
