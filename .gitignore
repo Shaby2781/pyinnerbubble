@@ -19,3 +19,6 @@ venv/
 .idea/
 ~$*
 *.pth
+
+# ...except the example frame images the example script actually needs to run.
+!examples/*.jpg
