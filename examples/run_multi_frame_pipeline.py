@@ -37,25 +37,33 @@ from pyinnerbubble.opticflow import (
 # ---------------------------------------------------------------------------
 # CONFIG -- one entry per frame
 # ---------------------------------------------------------------------------
-SAM_CHECKPOINT = r"C:\royi\temp_python_prog\meta\sam_vit_h_4b8939.pth"  # local path to the downloaded SAM model weights
+# Repo root, resolved from this file's own location -- so paths below work
+# regardless of the current working directory the script is launched from
+# (e.g. PyCharm's default run-configuration cwd is the project root, not
+# examples/, so a plain "../" would be wrong there).
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# The SAM checkpoint lives outside the repo (too large for git) -- keep this
+# as an absolute path to wherever you downloaded it locally.
+SAM_CHECKPOINT = r"C:\royi\temp_python_prog\meta\sam_vit_h_4b8939.pth"
 SAM_MODEL_TYPE = "vit_h"  # must match the checkpoint above (vit_h/vit_l/vit_b)
-OUT_DIR = r"C:\royi\Clude_python_lib\output"  # all per-frame and per-flow-pair results are written under here
+OUT_DIR = REPO_ROOT / "output"  # all per-frame and per-flow-pair results are written under here
 MAX_WORKERS = 4  # max parallel processes for the reconstruction+mapping step (per-frame, CPU-bound)
 
 FRAMES = {
     # Each entry is one recorded frame pair (shadowgraph + PLIF) to process.
     # Dict key (24, 25, ...) is the frame number, used only for labeling output folders.
     24: dict(
-        shadowgraph_image=r"C:\royi\Clude_python_lib\shadowgraph0024.jpg",  # path to this frame's shadowgraph image
-        plif_image=r"C:\royi\Clude_python_lib\piv0024.jpg",  # path to this frame's PLIF image
+        shadowgraph_image=str(REPO_ROOT / "shadowgraph0024.jpg"),  # path to this frame's shadowgraph image
+        plif_image=str(REPO_ROOT / "piv0024.jpg"),  # path to this frame's PLIF image
         shadowgraph_foreground=np.array([[614, 640]]),  # (x, y) pixel inside the bubble, in the shadowgraph image
         shadowgraph_background=np.array([[320, 192]]),  # (x, y) pixel outside the bubble (plain background), shadowgraph image
         plif_foreground=np.array([[995, 850]]),  # (x, y) pixel inside the illuminated PLIF region
         plif_background=np.array([[995, 995]]),  # (x, y) pixel outside the illuminated PLIF region (dark background)
     ),
     25: dict(
-        shadowgraph_image=r"C:\royi\Clude_python_lib\shadowgraph0025.jpg",
-        plif_image=r"C:\royi\Clude_python_lib\piv0025.jpg",
+        shadowgraph_image=str(REPO_ROOT / "shadowgraph0025.jpg"),
+        plif_image=str(REPO_ROOT / "piv0025.jpg"),
         shadowgraph_foreground=np.array([[614, 617]]),
         shadowgraph_background=np.array([[320, 169]]),
         plif_foreground=np.array([[995, 827]]),
