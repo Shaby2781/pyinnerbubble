@@ -45,9 +45,9 @@ from pyinnerbubble.opticflow import (
 SCRIPT_DIR = Path(__file__).resolve().parent  # examples/, where the frame images live
 REPO_ROOT = SCRIPT_DIR.parent
 
-# The SAM checkpoint lives outside the repo (too large for git) -- keep this
-# as an absolute path to wherever you downloaded it locally.
-SAM_CHECKPOINT = r"C:\royi\temp_python_prog\meta\sam_vit_h_4b8939.pth"
+# Download this into checkpoints/ (gitignored, too large for git) -- see
+# checkpoints/README.md for direct download links.
+SAM_CHECKPOINT = REPO_ROOT / "checkpoints" / "sam_vit_h_4b8939.pth"
 SAM_MODEL_TYPE = "vit_h"  # must match the checkpoint above (vit_h/vit_l/vit_b)
 OUT_DIR = REPO_ROOT / "output"  # all per-frame and per-flow-pair results are written under here
 MAX_WORKERS = 4  # max parallel processes for the reconstruction+mapping step (per-frame, CPU-bound)
@@ -208,6 +208,11 @@ def _compute_optic_flow_between_frames(frame_a, frame_b, plif_a_cropped, plif_b_
 
 
 def main():
+    if not SAM_CHECKPOINT.exists():
+        raise FileNotFoundError(
+            f"SAM checkpoint not found at {SAM_CHECKPOINT}. "
+            f"Download it into {SAM_CHECKPOINT.parent} -- see checkpoints/README.md for links."
+        )
     predictor = load_predictor(SAM_CHECKPOINT, model_type=SAM_MODEL_TYPE)
 
     frame_data = {

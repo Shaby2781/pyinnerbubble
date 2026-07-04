@@ -35,9 +35,9 @@ pip install "pyinnerbubble[segmentation] @ git+https://github.com/REPLACE_ME/pyi
 ```
 
 Requires Python >=3.10. The SAM model checkpoint (e.g. `sam_vit_h_4b8939.pth`) is not
-included in this repo -- download it separately from the
-[segment-anything releases](https://github.com/facebookresearch/segment-anything#model-checkpoints)
-and point your script at its local path.
+included in this repo (multi-GB file) -- download it into `checkpoints/` (see
+[`checkpoints/README.md`](checkpoints/README.md) for direct links), which is where the
+example scripts expect it by default.
 
 For development (editable install, running the test suite):
 
