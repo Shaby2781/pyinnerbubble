@@ -166,7 +166,8 @@ def build_camera_plane_mapping(
 
     a_up, b_up, y_0_up = fit_cap_ellipse(curve_up)
     popt, _ = curve_fit(
-        partial(_exp_value, z_ref=y_0_up), curve_down[:, 1], curve_down[:, 0], p0=[10, 0.01, -500]
+        partial(_exp_value, z_ref=y_0_up), curve_down[:, 1], curve_down[:, 0], p0=[10, 0.01, -500],
+        maxfev=10000,
     )
     a_down, b_down, c_down = popt
     e_up = b_up / a_up

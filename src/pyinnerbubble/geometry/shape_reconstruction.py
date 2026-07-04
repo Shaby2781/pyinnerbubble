@@ -349,6 +349,7 @@ def reconstruct_bubble_shape(
     popt, _ = curve_fit(
         partial(_exp_value, z_ref=z_min_down),
         shadow_graph_curve2[:, 1], shadow_graph_curve2[:, 0], p0=[10, 0.01, -500],
+        maxfev=10000,
     )
     a_down, b_down, c_down = popt
 
