@@ -83,7 +83,7 @@ FRAME_RATE_HZ = 400.0  # camera frame rate, Hz
 
 # Quiver appearance on the final velocity-field plot.
 QUIVER_STEP = 30  # px stride between plotted arrows (smaller = denser)
-QUIVER_SCALE = None  # data units per arrow length; smaller = LONGER arrows; None = auto
+QUIVER_SCALE = 1.18  # data units per arrow length; smaller = LONGER arrows; None = auto (was ~2.35, halved for 2x length)
 QUIVER_WIDTH = None  # arrow shaft width, fraction of plot width; None = matplotlib default (~0.005)
 VMIN = 0
 VMAX = 0.5 * 0.2
