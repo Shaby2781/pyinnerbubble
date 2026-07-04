@@ -12,8 +12,9 @@ This library implements the method described in:
 |---|---|---|
 | Bubble shape reconstruction & ray-tracing | `pyinnerbubble.geometry` | §III A |
 | Velocity eduction (optic flow) | `pyinnerbubble.opticflow` | §III B |
-| Data assimilation of interfacial velocities | `pyinnerbubble.assimilation` | §III C |
-| Scalar transport / Sherwood number | `pyinnerbubble.transport` | §IV |
+
+Data assimilation of interfacial velocities (§III C) and scalar transport / Sherwood
+number (§IV) are described in the paper but not yet implemented in this library.
 
 ## Status
 
@@ -47,6 +48,24 @@ cd pyinnerbubble
 pip install -e ".[dev,segmentation]"
 pytest
 ```
+
+## Example
+
+[`examples/run_multi_frame_pipeline.py`](examples/run_multi_frame_pipeline.py) runs the full
+pipeline end to end on a pair of frames: SAM segmentation, shape reconstruction, camera-plane
+mapping, Farneback optic flow, and the final physical velocity field plot. Edit the `CONFIG`
+block at the top (frame image paths, SAM point prompts, calibration constants), download the
+SAM checkpoint into `checkpoints/` (see above), then run it directly.
+
+Each pipeline stage also has its own CLI, installed by `pip install`:
+`pyinnerbubble-segment`, `pyinnerbubble-reconstruct-shape`, `pyinnerbubble-camera-mapping`,
+`pyinnerbubble-map-velocity`. Run any of them with `--help` for its full argument list.
+
+## Documentation
+
+[`docs/documentation.docx`](docs/documentation.docx) has the full function-by-function
+reference (signatures, parameters, return values) for every module, plus setup/installation
+instructions.
 
 ## License
 
