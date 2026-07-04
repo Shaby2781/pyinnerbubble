@@ -28,8 +28,14 @@ For users, once this repo is on GitHub:
 pip install git+https://github.com/Shaby2781/pyinnerbubble.git
 ```
 
-Add the `segmentation` extra (torch + segment-anything) if you need the SAM-based
-contour segmentation in `pyinnerbubble.geometry.segmentation`:
+Add the `segmentation` extra (torch + torchvision + segment-anything) if you need the
+SAM-based contour segmentation in `pyinnerbubble.geometry.segmentation`. On a CPU-only
+machine, install the CPU builds of torch/torchvision first to avoid pulling in several
+GB of unneeded CUDA libraries:
+
+```bash
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+```
 
 ```bash
 pip install "pyinnerbubble[segmentation] @ git+https://github.com/Shaby2781/pyinnerbubble.git"

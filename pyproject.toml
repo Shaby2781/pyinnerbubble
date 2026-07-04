@@ -32,13 +32,13 @@ classifiers = [
 dependencies = [
     "numpy",
     "scipy",
-    "opencv-python",
+    "opencv-python-headless",
     "matplotlib",
     "shapely",
 ]
 
 [project.optional-dependencies]
-segmentation = ["torch", "segment-anything"]
+segmentation = ["torch", "torchvision", "segment-anything"]
 dev = ["pytest", "pytest-cov", "ruff"]
 
 [project.urls]
