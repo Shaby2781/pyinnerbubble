@@ -25,14 +25,14 @@ Work in progress — scripts are being migrated from research code into this pac
 For users, once this repo is on GitHub:
 
 ```bash
-pip install git+https://github.com/REPLACE_ME/pyinnerbubble.git
+pip install git+https://github.com/Shaby2781/pyinnerbubble.git
 ```
 
 Add the `segmentation` extra (torch + segment-anything) if you need the SAM-based
 contour segmentation in `pyinnerbubble.geometry.segmentation`:
 
 ```bash
-pip install "pyinnerbubble[segmentation] @ git+https://github.com/REPLACE_ME/pyinnerbubble.git"
+pip install "pyinnerbubble[segmentation] @ git+https://github.com/Shaby2781/pyinnerbubble.git"
 ```
 
 Requires Python >=3.10. The SAM model checkpoint (e.g. `sam_vit_h_4b8939.pth`) is not
@@ -43,7 +43,7 @@ example scripts expect it by default.
 For development (editable install, running the test suite):
 
 ```bash
-git clone https://github.com/REPLACE_ME/pyinnerbubble.git
+git clone https://github.com/Shaby2781/pyinnerbubble.git
 cd pyinnerbubble
 pip install -e ".[dev,segmentation]"
 pytest

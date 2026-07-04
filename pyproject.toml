@@ -42,8 +42,8 @@ segmentation = ["torch", "segment-anything"]
 dev = ["pytest", "pytest-cov", "ruff"]
 
 [project.urls]
-Homepage = "https://github.com/REPLACE_ME/pyinnerbubble"
-Issues = "https://github.com/REPLACE_ME/pyinnerbubble/issues"
+Homepage = "https://github.com/Shaby2781/pyinnerbubble"
+Issues = "https://github.com/Shaby2781/pyinnerbubble/issues"
 
 [project.scripts]
 pyinnerbubble-segment = "pyinnerbubble.geometry.segmentation:main"
