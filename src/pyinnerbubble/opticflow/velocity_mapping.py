@@ -126,6 +126,7 @@ def plot_velocity_field(
     quiver_width: float | None = None,
     vmin: float | None = None,
     vmax: float | None = None,
+    bubble_contour: np.ndarray | None = None,
     save_path=None,
 ) -> None:
     """Plot velocity magnitude as a flat-shaded pcolor (YlOrBr) with a black quiver
@@ -141,6 +142,9 @@ def plot_velocity_field(
         Smaller values draw LONGER arrows; None auto-scales from the data.
     quiver_width : arrow shaft width, as a fraction of the plot width (matplotlib's
         quiver ``width``); None uses matplotlib's default (~0.005).
+    bubble_contour : optional (N, 2) array (e.g. CameraMappingResult.bubble_shape_closed)
+        drawn as a thick black curve on top of the pcolor/quiver, in the same
+        (x_mat, y_mat) coordinate plane.
 
     x_mat/y_mat's -10 sentinel for "outside the bubble" (see
     build_camera_plane_mapping) is masked to NaN here -- pcolor otherwise draws
@@ -181,6 +185,8 @@ def plot_velocity_field(
         u[::step, ::step], v[::step, ::step],
         color="black", angles="xy", scale=quiver_scale, width=quiver_width,
     )
+    if bubble_contour is not None:
+        ax.plot(bubble_contour[:, 0], bubble_contour[:, 1], color="black", linewidth=2.5)
     ax.invert_yaxis()
     ax.set_aspect("equal")
     ax.axis("off")
@@ -214,6 +220,11 @@ def _parse_args(argv):
     parser.add_argument("--quiver-width", type=float, default=None, help="Arrow shaft width, fraction of plot width.")
     parser.add_argument("--vmin", type=float, default=None, help="Colorbar lower bound, e.g. 0.")
     parser.add_argument("--vmax", type=float, default=None, help="Colorbar upper bound, e.g. 0.5.")
+    parser.add_argument(
+        "--bubble-contour", default=None,
+        help="Path to a bubble contour txt (e.g. bubble_shape_tot.txt from build_camera_plane_mapping) "
+             "to draw as a thick black curve on the plot.",
+    )
     return parser.parse_args(argv)
 
 
@@ -248,11 +259,12 @@ def main(argv: list[str] | None = None) -> None:
         np.savetxt(out_dir / "v_phys_smooth.txt", v_final)
 
     if args.plot:
+        bubble_contour = np.loadtxt(args.bubble_contour) if args.bubble_contour else None
         plot_velocity_field(
             x_mat, y_mat, u_final, v_final,
             px_per_mm=args.px_per_mm, frame_rate_hz=args.frame_rate_hz,
             quiver_step=args.quiver_step, quiver_scale=args.quiver_scale, quiver_width=args.quiver_width,
-            vmin=args.vmin, vmax=args.vmax,
+            vmin=args.vmin, vmax=args.vmax, bubble_contour=bubble_contour,
             save_path=out_dir / "velocity_field.png",
         )
 

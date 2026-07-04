@@ -200,6 +200,7 @@ def _compute_optic_flow_between_frames(frame_a, frame_b, plif_a_cropped, plif_b_
         px_per_mm=PX_PER_MM, frame_rate_hz=FRAME_RATE_HZ,
         vmin=VMIN, vmax=VMAX,
         quiver_step=QUIVER_STEP, quiver_scale=QUIVER_SCALE, quiver_width=QUIVER_WIDTH,
+        bubble_contour=mapping_a.bubble_shape_closed,
         save_path=flow_dir / "velocity_field.png",
     )
 
