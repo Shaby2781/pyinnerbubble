@@ -16,6 +16,7 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 
 from pyinnerbubble.geometry import (
@@ -247,8 +248,8 @@ def main():
             mapping_results[frame_a],
             OUT_DIR,
         )
-    plt.show()
     print("All frames processed.")
+    plt.show()
 
 
 if __name__ == "__main__":
