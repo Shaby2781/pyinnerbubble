@@ -27,6 +27,7 @@ from __future__ import annotations
 from math import factorial
 
 import numpy as np
+from scipy.ndimage import distance_transform_edt
 from scipy.signal import convolve2d
 
 
@@ -45,7 +46,7 @@ def compute_mapping_derivatives(x_mat: np.ndarray, y_mat: np.ndarray):
 
 
 def map_camera_flow_to_physical(
-    flow: np.ndarray, x_mat: np.ndarray, y_mat: np.ndarray
+    flow: np.ndarray, x_mat: np.ndarray, y_mat: np.ndarray, edge_removal: int = 0
 ) -> tuple[np.ndarray, np.ndarray]:
     """Convert camera-plane optic flow to physical velocity via the chain rule.
 
@@ -55,16 +56,35 @@ def map_camera_flow_to_physical(
     x_mat, y_mat : the physical mapping from
         :func:`pyinnerbubble.geometry.build_camera_plane_mapping`
         (``physical_x``/``physical_z``), same (H, W) shape as flow.
+    edge_removal : int
+        How many pixels to remove *inside* the bubble edge. Pixels outside the
+        bubble (the -10 sentinel in ``x_mat``/``y_mat``) are always set to NaN;
+        if ``edge_removal`` > 0, a band that many pixels wide just inside the
+        interface is removed too, since there the Farneback optic-flow window and
+        the 2D Savitzky-Golay smoothing window applied afterward reach across the
+        edge and average in invalid outside-bubble data. A sensible value is the
+        average of the two smoothing window sizes (Farneback ``filter_size`` and
+        the S-G window ``2*radius+1``). 0 (default) removes only the outside.
 
     Returns
     -------
     u_phys, v_phys : physical velocity components, per frame, same units as
-        flow's input pixels (no averaging across frames, no smoothing applied).
+        flow's input pixels (no averaging across frames, no smoothing applied),
+        with invalid pixels (outside, plus the edge band if requested) set to NaN.
     """
     x_xsi, x_eta, y_xsi, y_eta = compute_mapping_derivatives(x_mat, y_mat)
     flow_0, flow_1 = flow[..., 0], flow[..., 1]
     u_phys = flow_0 * x_xsi + flow_1 * x_eta
     v_phys = flow_0 * y_xsi + flow_1 * y_eta
+
+    # Outside-bubble pixels are always invalid; optionally also strip an inside-edge band.
+    inside = (x_mat >= 0) & (y_mat >= 0)
+    valid = inside
+    if edge_removal > 0:
+        dist_to_edge = distance_transform_edt(inside)  # px from each interior pixel to the outside
+        valid = inside & (dist_to_edge > edge_removal)
+    u_phys = np.where(valid, u_phys, np.nan)
+    v_phys = np.where(valid, v_phys, np.nan)
     return u_phys, v_phys
 
 
@@ -212,6 +232,12 @@ def _parse_args(argv):
     parser.add_argument("--smooth-radius", type=int, default=7)
     parser.add_argument("--smooth-order", type=int, default=2)
     parser.add_argument("--no-smooth", action="store_true", help="Skip the 2D Savitzky-Golay smoothing step.")
+    parser.add_argument(
+        "--edge-removal", type=int, default=0,
+        help="Pixels to remove inside the bubble edge (0 = off). Discards vectors where the "
+             "Farneback/Savitzky-Golay windows reach across the interface; try the average of "
+             "the two smoothing windows.",
+    )
     parser.add_argument("--plot", action="store_true", help="Save a velocity-magnitude + quiver plot.")
     parser.add_argument("--px-per-mm", type=float, default=None, help="e.g. 38 -- plot velocity in m/s instead of px/frame.")
     parser.add_argument("--frame-rate-hz", type=float, default=None, help="e.g. 400 -- required together with --px-per-mm.")
@@ -239,12 +265,9 @@ def main(argv: list[str] | None = None) -> None:
     y_mat = np.loadtxt(args.y_mat)
     flow = np.stack([u_x, u_y], axis=-1)
 
-    # x_mat/y_mat use -10 as a sentinel for "outside the bubble"
-    # (see build_camera_plane_mapping); mask those before smoothing.
-    outside = (x_mat < 0) | (y_mat < 0)
-    u_phys, v_phys = map_camera_flow_to_physical(flow, x_mat, y_mat)
-    u_phys[outside] = np.nan
-    v_phys[outside] = np.nan
+    # map_camera_flow_to_physical masks the -10 "outside the bubble" sentinel (see
+    # build_camera_plane_mapping), plus an inside-edge band when --edge-removal > 0.
+    u_phys, v_phys = map_camera_flow_to_physical(flow, x_mat, y_mat, edge_removal=args.edge_removal)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

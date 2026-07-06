@@ -12,9 +12,13 @@ This library implements the method described in:
 |---|---|---|
 | Bubble shape reconstruction & ray-tracing | `pyinnerbubble.geometry` | §III A |
 | Velocity eduction (optic flow) | `pyinnerbubble.opticflow` | §III B |
+| Data assimilation — conformal map, mesh & inverse Navier-Stokes | `pyinnerbubble.assimilation` | §III C |
 
-Data assimilation of interfacial velocities (§III C) and scalar transport / Sherwood
-number (§IV) are described in the paper but not yet implemented in this library.
+The data assimilation stage covers the body-fitted coordinate setup (the conformal map
+between the unit disk and the bubble region, and the graded computational mesh built from
+it) and the inverse solve: fitting the interfacial boundary velocity so a steady
+axisymmetric Navier-Stokes solution best matches the measured interior velocity field.
+Scalar transport / Sherwood number (§IV) is described in the paper and is being migrated next.
 
 ## Status
 
@@ -62,16 +66,31 @@ cd pyinnerbubble
 pip install -e ".[dev,segmentation]"
 ```
 
-[`examples/run_multi_frame_pipeline.py`](examples/run_multi_frame_pipeline.py) runs the full
-pipeline end to end on a pair of frames (the four `.jpg` images are included in `examples/`):
-SAM segmentation, shape reconstruction, camera-plane mapping, Farneback optic flow, and the
-final physical velocity field plot. Edit the `CONFIG` block at the top (frame image paths, SAM
-point prompts, calibration constants), download the SAM checkpoint into `checkpoints/` (see
-above), then run it directly. Run `pytest` from the repo root to run the test suite too.
+The `examples/` folder is organized by pipeline stage:
+
+- [`examples/bubble_shape_and_optic_flow/run_multi_frame_pipeline.py`](examples/bubble_shape_and_optic_flow/run_multi_frame_pipeline.py)
+  runs the shape + velocity pipeline end to end on a pair of frames (the four `.jpg` images live
+  alongside it): SAM segmentation, shape reconstruction, camera-plane mapping, Farneback optic
+  flow, and the final physical velocity field plot. Edit the `CONFIG` block at the top (frame
+  image paths, SAM point prompts, calibration constants) and download the SAM checkpoint into
+  `checkpoints/` (see above) before running.
+- [`examples/grid_and_data_assimilation/grid_build_example.py`](examples/grid_and_data_assimilation/grid_build_example.py)
+  takes a reconstructed bubble boundary (`bubble_shape_tot.txt`, included alongside it) and builds
+  the conformal map (unit disk <-> bubble) and the graded computational mesh for the data
+  assimilation stage. Edit its `CONFIG` block (reference diameter, grid size/clustering) then run.
+- [`examples/grid_and_data_assimilation/example_DA.py`](examples/grid_and_data_assimilation/example_DA.py)
+  runs the inverse Navier-Stokes assimilation: it loads a coarse mesh plus the experimental grid and
+  ray-traced velocity (all included alongside it), and fits the interfacial boundary velocity to the
+  measured interior field, plotting the optimization trace, reconstructed streamlines, and the fitted
+  edge-velocity profile. **The bundled mesh is intentionally coarse so it runs on a laptop in a few
+  minutes — it is a demonstration, not a research-grade grid** (see the note in the documentation).
+
+Run `pytest` from the repo root to run the test suite too.
 
 Each pipeline stage also has its own CLI, installed by `pip install` (no clone needed):
 `pyinnerbubble-segment`, `pyinnerbubble-reconstruct-shape`, `pyinnerbubble-camera-mapping`,
-`pyinnerbubble-map-velocity`. Run any of them with `--help` for its full argument list.
+`pyinnerbubble-map-velocity`, `pyinnerbubble-conformal-map`, `pyinnerbubble-build-mesh`. Run any
+of them with `--help` for its full argument list.
 
 ## Documentation
 

@@ -7,7 +7,7 @@ shared model, so those run one process per frame via ProcessPoolExecutor.
 
 Edit the CONFIG block below (in particular FRAMES, one entry per frame), then run:
 
-    python examples/run_multi_frame_pipeline.py
+    python examples/bubble_shape_and_optic_flow/run_multi_frame_pipeline.py
 """
 
 from __future__ import annotations
@@ -42,8 +42,8 @@ from pyinnerbubble.opticflow import (
 # the current working directory the script is launched from (e.g. PyCharm's
 # default run-configuration cwd is the project root, not examples/, so a plain
 # "../" would be wrong there).
-SCRIPT_DIR = Path(__file__).resolve().parent  # examples/, where the frame images live
-REPO_ROOT = SCRIPT_DIR.parent
+SCRIPT_DIR = Path(__file__).resolve().parent  # this folder (examples/bubble_shape_and_optic_flow/), where the frame images live
+REPO_ROOT = SCRIPT_DIR.parent.parent  # up through examples/ to the repo root
 
 # Download this into checkpoints/ (gitignored, too large for git) -- see
 # checkpoints/README.md for direct download links.
@@ -84,6 +84,15 @@ FARNEBACK_PARAMS = FarnebackParams(
     num_pyramid_levels=3, pyramid_scale=0.5, num_iterations=3,
     neighborhood_size=1, filter_size=15, poly_sigma=1.1,
 )
+
+SMOOTH_RADIUS = 14  # 2D Savitzky-Golay smoothing half window 7pt + farneback 7pt = 14 px
+
+# Edge removal: discard mapped velocity within this many pixels INSIDE the bubble edge,
+# where the Farneback and Savitzky-Golay windows reach across the interface and average
+# in invalid outside-bubble data (we don't use data from outside the bubble). 0 = off.
+# A sensible value is the average of the two smoothing windows: Farneback filter_size (15)
+# and the S-G window (2*SMOOTH_RADIUS+1 = 15) average to 15 px.
+EDGE_REMOVAL = 15  # px inside the edge to remove (0 = keep everything inside the bubble)
 
 PLOT = True  # each worker SAVES figures to its frame folder -- can't show() across processes
 
@@ -184,12 +193,15 @@ def _compute_optic_flow_between_frames(frame_a, frame_b, plif_a_cropped, plif_b_
     np.savetxt(flow_dir / "u_y.txt", flow[..., 1])
     plot_flow_quiver(plif_a_cropped, flow, save_path=flow_dir / "quiver.png")
 
-    outside = (mapping_a.physical_x < 0) | (mapping_a.physical_z < 0)
-    u_phys, v_phys = map_camera_flow_to_physical(flow, mapping_a.physical_x, mapping_a.physical_z)
-    u_phys[outside] = np.nan
-    v_phys[outside] = np.nan
-    u_phys_smooth = savgol_2d_smooth(u_phys)
-    v_phys_smooth = savgol_2d_smooth(v_phys)
+    # map_camera_flow_to_physical masks pixels outside the bubble, plus an EDGE_REMOVAL-px
+    # band just inside the edge (where the Farneback + Savitzky-Golay windows would average
+    # in invalid outside-bubble data).
+    u_phys, v_phys = map_camera_flow_to_physical(
+        flow, mapping_a.physical_x, mapping_a.physical_z, edge_removal=EDGE_REMOVAL
+    )
+    u_phys_smooth = savgol_2d_smooth(u_phys, radius=SMOOTH_RADIUS)
+    v_phys_smooth = savgol_2d_smooth(v_phys, radius=SMOOTH_RADIUS)
+
     np.savetxt(flow_dir / "u_phys.txt", u_phys)
     np.savetxt(flow_dir / "v_phys.txt", v_phys)
     np.savetxt(flow_dir / "u_phys_smooth.txt", u_phys_smooth)

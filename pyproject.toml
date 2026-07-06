@@ -31,7 +31,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy",
-    "scipy",
+    "scipy>=1.15",
     "opencv-python-headless",
     "matplotlib",
     "shapely",
@@ -50,6 +50,8 @@ pyinnerbubble-segment = "pyinnerbubble.geometry.segmentation:main"
 pyinnerbubble-reconstruct-shape = "pyinnerbubble.geometry.shape_reconstruction:main"
 pyinnerbubble-camera-mapping = "pyinnerbubble.geometry.camera_mapping:main"
 pyinnerbubble-map-velocity = "pyinnerbubble.opticflow.velocity_mapping:main"
+pyinnerbubble-conformal-map = "pyinnerbubble.assimilation.conformal_mapping:main"
+pyinnerbubble-build-mesh = "pyinnerbubble.assimilation.mesh:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pyinnerbubble"]

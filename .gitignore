@@ -20,5 +20,7 @@ venv/
 ~$*
 *.pth
 
-# ...except the example frame images the example script actually needs to run.
+# ...except the example frame images the example scripts actually need to run
+# (including the per-stage subfolders under examples/).
+!examples/**/*.jpg
 !examples/*.jpg
