@@ -46,7 +46,7 @@ REYNOLDS = 301.0                    # = V * D / nu  (carries the physical scale)
 MESH_DREF_PX = 1040.0
 
 NUM_OF_POINTS = 2   # free spline control points for the boundary velocity (as requested)
-MAXITER = 15        # optimizer iterations (raise for a tighter fit; each adds ~seconds)
+MAXITER = 400        # optimizer iterations (raise for a tighter fit; each adds ~seconds)
 
 # Weighting matrix in the cost. None -> np.ones_like(mesh) (uniform, the default). To weight
 # by measurement confidence, build an (M, N) array on the mesh and assign it here instead.

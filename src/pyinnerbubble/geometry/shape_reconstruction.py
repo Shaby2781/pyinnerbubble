@@ -282,7 +282,7 @@ def reconstruct_bubble_shape(
     shadowgraph_contour: np.ndarray,
     plif_contour: np.ndarray,
     velocity_px_per_frame: float,
-    angle_to_rotate: float = -np.pi / 180,
+    angle_to_rotate: float = 0.0,
     mu_oil_gas: float = 1.405,
     crop: CropParams | None = None,
     plot: bool | str | Path = False,
