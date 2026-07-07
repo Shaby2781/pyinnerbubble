@@ -21,6 +21,7 @@ numerical ODE Jacobian ``J`` that was never used by the cost function; it is dro
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -347,16 +348,26 @@ def assimilate_boundary_velocity(
     bounds = [(-bound_factor * u_scale, bound_factor * u_scale)] * num_of_points
     cost_history: list[float] = []
     last_cost = {"value": np.nan}
+    n_eval = {"count": 0}
 
     def objective(vel_vec):
+        # One objective call = one steady-state Navier-Stokes (CFD) solve. Print every call
+        # with its elapsed time so it is obvious the solver is progressing -- on a real
+        # (fine-mesh) problem each solve is slow, and without this the run looks stalled.
+        n_eval["count"] += 1
+        t0 = time.perf_counter()
         c = _cost(vel_vec, r_mat, z_mat, metrics, ur_meas, uz_meas, weight_mat, reynolds, psi0, phi0)
+        dt = time.perf_counter() - t0
         last_cost["value"] = c
+        if verbose:
+            print(f"[assimilate] CFD solve {n_eval['count']}: cost={c:.6g}  ({dt:.2f} s)", flush=True)
         return c
 
     def on_iter(xk):
         cost_history.append(last_cost["value"])
         if verbose:
-            print(f"[assimilate] iter {len(cost_history)}: cost={last_cost['value']:.6g}")
+            print(f"[assimilate] --- iteration {len(cost_history)} complete: "
+                  f"cost={last_cost['value']:.6g} after {n_eval['count']} CFD solves ---", flush=True)
 
     if verbose:
         print(f"[assimilate] mesh {r_mat.shape}, num_of_points={num_of_points}, Re={reynolds}, method={method}")
