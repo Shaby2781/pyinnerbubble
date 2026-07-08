@@ -20,6 +20,7 @@ from .flow_reconstruction import (
     boundary_velocity_profile,
     compute_mesh_metrics,
     plot_assimilation,
+    plot_velocity_field_on_mesh,
     reconstruct_flow_field,
 )
 from .mesh import (
@@ -49,4 +50,5 @@ __all__ = [
     "reconstruct_flow_field",
     "boundary_velocity_profile",
     "plot_assimilation",
+    "plot_velocity_field_on_mesh",
 ]

@@ -237,6 +237,13 @@ def _velocity_from_psi(psi, r_mat, z_mat, metrics, r_floor_zero_border=False):
     r_div[r_div == 0] = 1e-6
     u_r = -1 / r_div * psi_z
     u_z = 1 / r_div * psi_r
+    if r_floor_zero_border:
+        # The 1/r factor blows up on the axis column (col 0) and the top/bottom rows, so the
+        # velocity there is meaningless. Replace those edge values with the adjacent interior
+        # row/column (the "second" row/column) instead of the garbage.
+        u_r[:, 0], u_z[:, 0] = u_r[:, 1], u_z[:, 1]
+        u_r[0, :], u_z[0, :] = u_r[1, :], u_z[1, :]
+        u_r[-1, :], u_z[-1, :] = u_r[-2, :], u_z[-2, :]
     return u_r, u_z
 
 
@@ -430,5 +437,46 @@ def plot_assimilation(result: AssimilationResult, save_path=None) -> None:
     fig.tight_layout()
     if save_path is not None:
         fig.savefig(str(save_path), dpi=150)
+    else:
+        plt.show()
+
+
+def plot_velocity_field_on_mesh(r_mat, z_mat, u_r, u_z, title="velocity field",
+                                quiver_step=1, quiver_scale=None, save_path=None) -> None:
+    """Plot a velocity field on the mesh: |u| as a color map with a quiver overlay.
+
+    Useful for the interpolated measured field (ur_meas, uz_meas) and the reconstructed
+    field (result.u_r, result.u_z) alike, in the physical (r, z) plane. The interface
+    (mesh column -1) is drawn as a thick black curve.
+
+    Parameters
+    ----------
+    r_mat, z_mat : (M, N) arrays
+        Mesh node coordinates.
+    u_r, u_z : (M, N) arrays
+        Radial / axial velocity components on the mesh.
+    quiver_step : int
+        Stride between plotted arrows (1 = every node).
+    quiver_scale : float or None
+        matplotlib quiver ``scale`` (smaller = longer arrows). None = auto.
+    """
+    import matplotlib.pyplot as plt
+
+    mag = np.sqrt(u_r ** 2 + u_z ** 2)
+    fig, ax = plt.subplots()
+    # gouraud shading: treat (r_mat, z_mat) as node positions on the curvilinear body-fitted
+    # mesh (the coordinates are not a monotonic rectilinear grid, so flat shading misplaces cells).
+    pc = ax.pcolormesh(r_mat, z_mat, mag, shading="gouraud", cmap="viridis")
+    fig.colorbar(pc, ax=ax, label="|u|")
+    s = max(1, int(quiver_step))
+    ax.quiver(r_mat[::s, ::s], z_mat[::s, ::s], u_r[::s, ::s], u_z[::s, ::s],
+              color="white", scale=quiver_scale)
+    ax.plot(r_mat[:, -1], z_mat[:, -1], "k-", linewidth=2)   # interface
+    ax.set_aspect("equal"); ax.set_title(title)
+    ax.set_xlabel("r"); ax.set_ylabel("z")
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(str(save_path), dpi=150)
+        plt.close(fig)
     else:
         plt.show()

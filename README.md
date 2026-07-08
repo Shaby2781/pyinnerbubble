@@ -13,12 +13,15 @@ This library implements the method described in:
 | Bubble shape reconstruction & ray-tracing | `pyinnerbubble.geometry` | §III A |
 | Velocity eduction (optic flow) | `pyinnerbubble.opticflow` | §III B |
 | Data assimilation — conformal map, mesh & inverse Navier-Stokes | `pyinnerbubble.assimilation` | §III C |
+| Scalar transport & Sherwood number | `pyinnerbubble.transport` | §IV |
 
 The data assimilation stage covers the body-fitted coordinate setup (the conformal map
 between the unit disk and the bubble region, and the graded computational mesh built from
 it) and the inverse solve: fitting the interfacial boundary velocity so a steady
 axisymmetric Navier-Stokes solution best matches the measured interior velocity field.
-Scalar transport / Sherwood number (§IV) is described in the paper and is being migrated next.
+The scalar transport stage then solves the axisymmetric advection-diffusion of a passive
+scalar on that reconstructed flow field and extracts the time-dependent Sherwood number
+over a range of Peclet numbers — completing the full method of the paper end to end.
 
 ## Status
 
@@ -84,6 +87,11 @@ The `examples/` folder is organized by pipeline stage:
   measured interior field, plotting the optimization trace, reconstructed streamlines, and the fitted
   edge-velocity profile. **The bundled mesh is intentionally coarse so it runs on a laptop in a few
   minutes — it is a demonstration, not a research-grade grid** (see the note in the documentation).
+- [`examples/scalar_transport/example_scalar_transport.py`](examples/scalar_transport/example_scalar_transport.py)
+  takes an assimilation result (`assimilation.npz`, the reconstructed flow field, included alongside it)
+  and solves the passive-scalar advection-diffusion for a range of Peclet numbers, producing the
+  Sherwood-number-vs-diffusion-time curves, Sherwood-vs-Peclet, and the final scalar-concentration
+  fields. Edit its `CONFIG` block (Peclet vector, end time, number of time points) then run.
 
 Run `pytest` from the repo root to run the test suite too.
 

@@ -25,7 +25,11 @@ from pathlib import Path
 import numpy as np
 from scipy.interpolate import LinearNDInterpolator
 
-from pyinnerbubble.assimilation import assimilate_boundary_velocity, plot_assimilation
+from pyinnerbubble.assimilation import (
+    assimilate_boundary_velocity,
+    plot_assimilation,
+    plot_velocity_field_on_mesh,
+)
 
 # ---------------------------------------------------------------------------
 # CONFIG
@@ -48,8 +52,10 @@ MESH_DREF_PX = 1040.0
 NUM_OF_POINTS = 2   # free spline control points for the boundary velocity (as requested)
 MAXITER = 400        # optimizer iterations (raise for a tighter fit; each adds ~seconds)
 
-# Weighting matrix in the cost. None -> np.ones_like(mesh) (uniform, the default). To weight
-# by measurement confidence, build an (M, N) array on the mesh and assign it here instead.
+# Base weighting matrix in the cost. None -> np.ones_like(mesh) (uniform). To weight by
+# measurement confidence, build an (M, N) array on the mesh and assign it here. Either way,
+# it is multiplied by a data-availability mask so mesh nodes with NO measured data (outside
+# the data hull) get weight 0 and are excluded from the cost.
 WEIGHT_MAT = None
 
 OUT_DIR = REPO_ROOT / "output" / "data_assimilation"
@@ -99,9 +105,15 @@ def _measured_velocity_on_mesh(r_mat, z_mat):
 
     pts = np.column_stack([r_pts, z_pts])
     query = np.column_stack([r_mat.ravel(), z_mat.ravel()])
-    ur_meas = LinearNDInterpolator(pts, ur, fill_value=0.0)(query).reshape(r_mat.shape)
-    uz_meas = LinearNDInterpolator(pts, uz, fill_value=0.0)(query).reshape(r_mat.shape)
-    return ur_meas, uz_meas
+    # fill with NaN (not 0) so mesh nodes OUTSIDE the measured-data hull are flagged as
+    # "no data" rather than looking like a real zero velocity.
+    ur_meas = LinearNDInterpolator(pts, ur, fill_value=np.nan)(query).reshape(r_mat.shape)
+    uz_meas = LinearNDInterpolator(pts, uz, fill_value=np.nan)(query).reshape(r_mat.shape)
+    data_mask = (np.isfinite(ur_meas) & np.isfinite(uz_meas)).astype(float)  # 1 = has data, 0 = none
+    # zero-fill for the arithmetic; the mask (weight 0) is what actually excludes them from the cost.
+    ur_meas = np.nan_to_num(ur_meas, nan=0.0)
+    uz_meas = np.nan_to_num(uz_meas, nan=0.0)
+    return ur_meas, uz_meas, data_mask
 
 
 def main():
@@ -109,18 +121,34 @@ def main():
     print(f"[DA] mesh {r_mat.shape}, r in [{r_mat.min():.3f}, {r_mat.max():.3f}], "
           f"z in [{z_mat.min():.3f}, {z_mat.max():.3f}] (diameter units)")
 
-    ur_meas, uz_meas = _measured_velocity_on_mesh(r_mat, z_mat)
+    ur_meas, uz_meas, data_mask = _measured_velocity_on_mesh(r_mat, z_mat)
     print(f"[DA] measured velocity on mesh: |u| max = "
-          f"{np.nanmax(np.sqrt(ur_meas**2 + uz_meas**2)):.3f} (bubble-velocity units)")
+          f"{np.nanmax(np.sqrt(ur_meas**2 + uz_meas**2)):.3f} (bubble-velocity units); "
+          f"{int(data_mask.sum())}/{data_mask.size} nodes have data")
+
+    # Weight: zero where there is NO measured data (outside the data hull), so those nodes
+    # are ignored in the cost instead of being pulled toward a fake "measured velocity = 0".
+    # WEIGHT_MAT (if set) is the base confidence weight; the data mask multiplies into it.
+    base_weight = np.ones_like(r_mat) if WEIGHT_MAT is None else WEIGHT_MAT
+    weight = base_weight * data_mask
+
+    # Plot the interpolated (measured) velocity field on the mesh -- |u| with a quiver
+    # overlay -- BEFORE the long solve, so it is saved even if the run is interrupted.
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    plot_velocity_field_on_mesh(
+        r_mat, z_mat, ur_meas, uz_meas,
+        title="interpolated measured velocity |u|",
+        save_path=OUT_DIR / "measured_field.png",
+    )
+    print(f"[DA] interpolated field plot saved -> {OUT_DIR / 'measured_field.png'}")
 
     result = assimilate_boundary_velocity(
         r_mat, z_mat, ur_meas, uz_meas,
         reynolds=REYNOLDS, num_of_points=NUM_OF_POINTS,
-        weight_mat=WEIGHT_MAT, maxiter=MAXITER, verbose=True,
+        weight_mat=weight, maxiter=MAXITER, verbose=True,
     )
     print(f"[DA] done. optimized control points = {result.vel_opt}, final cost = {result.cost:.6g}")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
     np.savez(
         OUT_DIR / "assimilation.npz",
         vel_opt=result.vel_opt, cost=result.cost, s=result.s,
@@ -129,6 +157,12 @@ def main():
         cost_history=np.asarray(result.cost_history),
     )
     plot_assimilation(result, save_path=OUT_DIR / "assimilation.png")
+    # Reconstructed field |u| + quiver, same style as the measured field (for comparison).
+    plot_velocity_field_on_mesh(
+        result.r_mat, result.z_mat, result.u_r, result.u_z,
+        title="reconstructed velocity |u|",
+        save_path=OUT_DIR / "reconstructed_field.png",
+    )
     print(f"[DA] results saved -> {OUT_DIR}")
 
 
