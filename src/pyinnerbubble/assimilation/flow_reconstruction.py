@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.integrate import cumulative_trapezoid, solve_ivp
-from scipy.interpolate import splev, splrep
+from scipy.interpolate import LinearNDInterpolator, splev, splrep
 from scipy.optimize import minimize
 
 
@@ -266,6 +266,52 @@ def _cost(vel_vec, r_mat, z_mat, metrics, ur_meas, uz_meas, weight_mat, reynolds
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+def interpolate_measured_field_to_mesh(
+    r_mat, z_mat, r_pts, z_pts, ur, uz,
+    weight_r_pts=None, weight_z_pts=None, weight_vals=None,
+):
+    """Interpolate a scattered measured velocity field (and optional confidence weight),
+    already expressed in the mesh's coordinate frame, onto the mesh nodes -- handling
+    no-data and zero-weight regions correctly (so this logic is not re-implemented per example).
+
+    Parameters
+    ----------
+    r_mat, z_mat : (M, N) arrays
+        The mesh node coordinates.
+    r_pts, z_pts, ur, uz : 1-D arrays
+        Scattered measured velocity samples (radial/axial) at (r_pts, z_pts). Pass only points
+        with real velocity data (e.g. drop the edge-removal band, where the velocity is NaN).
+    weight_r_pts, weight_z_pts, weight_vals : 1-D arrays, optional
+        Scattered confidence-weight samples. Pass the FULL in-region set INCLUDING any
+        zero-weight band (e.g. the edge-removal band) so those zeros are preserved on the mesh
+        instead of being smeared over by the nonzero interior -- this is the subtlety that is
+        easy to get wrong. If omitted, a uniform weight of 1 is used.
+
+    Returns
+    -------
+    (ur_meas, uz_meas, weight_mat, data_mask) : all (M, N)
+        Velocity is 0 (and ``data_mask`` = 0) at mesh nodes outside the velocity-data hull;
+        ``weight_mat`` is the interpolated weight, always forced to 0 where there is no
+        velocity data.
+    """
+    query = np.column_stack([r_mat.ravel(), z_mat.ravel()])
+    vpts = np.column_stack([r_pts, z_pts])
+    ur_meas = LinearNDInterpolator(vpts, ur, fill_value=np.nan)(query).reshape(r_mat.shape)
+    uz_meas = LinearNDInterpolator(vpts, uz, fill_value=np.nan)(query).reshape(r_mat.shape)
+    data_mask = (np.isfinite(ur_meas) & np.isfinite(uz_meas)).astype(float)
+    ur_meas = np.nan_to_num(ur_meas, nan=0.0)
+    uz_meas = np.nan_to_num(uz_meas, nan=0.0)
+
+    if weight_vals is None:
+        weight_mat = np.ones_like(r_mat)
+    else:
+        wpts = np.column_stack([weight_r_pts, weight_z_pts])
+        weight_mat = LinearNDInterpolator(wpts, weight_vals, fill_value=0.0)(query).reshape(r_mat.shape)
+        weight_mat = np.clip(np.nan_to_num(weight_mat, nan=0.0), 0.0, None)
+    weight_mat = weight_mat * data_mask   # no velocity data -> no weight
+    return ur_meas, uz_meas, weight_mat, data_mask
+
+
 @dataclass
 class AssimilationResult:
     vel_opt: np.ndarray            # optimized boundary velocity control points
