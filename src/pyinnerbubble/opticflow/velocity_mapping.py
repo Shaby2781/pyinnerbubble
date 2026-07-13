@@ -27,6 +27,7 @@ from __future__ import annotations
 from math import factorial
 
 import numpy as np
+from ..plotting import matlab_styled
 from scipy.ndimage import distance_transform_edt
 from scipy.signal import convolve2d
 
@@ -134,6 +135,7 @@ def velocity_to_physical_units(u: np.ndarray, v: np.ndarray, px_per_mm: float, f
     return u * scale, v * scale
 
 
+@matlab_styled
 def plot_velocity_field(
     x_mat: np.ndarray,
     y_mat: np.ndarray,
@@ -193,8 +195,11 @@ def plot_velocity_field(
     # column smaller (matplotlib raises on equal-sized inputs; MATLAB's pcolor
     # silently drops the last row/col in this situation instead).
     mesh = ax.pcolor(x_mat, y_mat, magnitude[:-1, :-1], cmap="YlOrBr", shading="flat", vmin=vmin, vmax=vmax)
-    cbar = fig.colorbar(mesh, ax=ax)
-    cbar.set_label(f"|u| [{unit_label}]")
+    # shorter colorbar (half height) with larger (2x) tick/label font
+    _cbfs = plt.rcParams["font.size"]   # same size as ticks/labels
+    cbar = fig.colorbar(mesh, ax=ax, shrink=0.5)
+    cbar.ax.set_title(rf"$|u|$ [{unit_label}]", fontsize=_cbfs, pad=12)   # math title on top
+    cbar.ax.tick_params(labelsize=_cbfs)
 
     step = quiver_step
     # angles="xy" is required so the arrow direction is computed from the actual

@@ -20,6 +20,7 @@ import time
 from dataclasses import dataclass
 
 import numpy as np
+from ..plotting import matlab_styled
 from scipy.integrate import solve_ivp
 
 from ..assimilation.flow_reconstruction import (
@@ -220,6 +221,7 @@ def simulate_scalar_transport(assimilation_file, t_end_diffusion: float, n_time:
 # ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
+@matlab_styled
 def plot_sherwood_vs_time(result: ScalarTransportResult, save_path=None) -> None:
     """Sh vs diffusion time (t/Pe), one line per Peclet number, with a legend."""
     import matplotlib.pyplot as plt
@@ -227,9 +229,9 @@ def plot_sherwood_vs_time(result: ScalarTransportResult, save_path=None) -> None
     fig, ax = plt.subplots()
     for j, pe in enumerate(result.pe_vec):
         ax.plot(result.t_diffusion, result.sh_matrix[:, j], label=f"Pe = {pe:g}")
-    ax.set_xlabel("t / Pe  (diffusion time)")
+    ax.set_xlabel("t")
     ax.set_ylabel("Sh")
-    ax.set_title("Sherwood number vs diffusion time")
+    #ax.set_title("Sherwood number vs diffusion time")
     ax.legend()
     fig.tight_layout()
     if save_path is not None:
@@ -238,6 +240,7 @@ def plot_sherwood_vs_time(result: ScalarTransportResult, save_path=None) -> None
         plt.show()
 
 
+@matlab_styled
 def plot_sherwood_vs_pe(result: ScalarTransportResult, save_path=None) -> None:
     """Sh at the last time point vs Peclet number."""
     import matplotlib.pyplot as plt
@@ -246,8 +249,8 @@ def plot_sherwood_vs_pe(result: ScalarTransportResult, save_path=None) -> None:
     ax.plot(result.pe_vec, result.sh_final, "o-")
     ax.set_xscale("log")
     ax.set_xlabel("Pe")
-    ax.set_ylabel("Sh (final time)")
-    ax.set_title("Sherwood vs Peclet")
+    ax.set_ylabel(r"Sh ($t \to \infty$)")
+    #ax.set_title("Sherwood vs Peclet")
     fig.tight_layout()
     if save_path is not None:
         fig.savefig(str(save_path), dpi=150); plt.close(fig)
@@ -255,23 +258,29 @@ def plot_sherwood_vs_pe(result: ScalarTransportResult, save_path=None) -> None:
         plt.show()
 
 
+@matlab_styled
 def plot_final_concentration(result: ScalarTransportResult, save_path=None) -> None:
     """Final scalar field for each Pe, normalized by its own maximum, side by side."""
     import matplotlib.pyplot as plt
 
     n = result.pe_vec.size
+    _fs = 1.6 * plt.rcParams["font.size"]   # larger text: panels are small in a multi-figure image
     fig, axes = plt.subplots(1, n, figsize=(4 * n, 4.5), squeeze=False)
     for j, pe in enumerate(result.pe_vec):
         ax = axes[0, j]
         c = result.concentration_final[j]
         c_norm = c / np.nanmax(c)
         pc = ax.pcolormesh(result.r_mat, result.z_mat, c_norm, shading="gouraud",
-                           cmap="inferno", vmin=0, vmax=1)
+                           cmap="Blues", vmin=0, vmax=1)
         ax.plot(result.r_mat[:, -1], result.z_mat[:, -1], "k-", linewidth=1.5)
-        ax.set_aspect("equal"); ax.set_title(f"Pe = {pe:g}"); ax.set_xlabel("r")
-        if j == 0:
-            ax.set_ylabel("z")
-        fig.colorbar(pc, ax=ax, fraction=0.046, label="c / c_max")
+        ax.set_aspect("equal"); ax.set_title(f"Pe = {pe:g}", fontsize=_fs); #ax.set_xlabel("r")
+        ax.axis('off')
+        #if j == 0:
+        #    ax.set_ylabel("z")
+        if pe==result.pe_vec[-1]:
+            cbar = fig.colorbar(pc, ax=ax, fraction=0.046, shrink=0.5)   # half-height colorbar
+            cbar.ax.set_title(r"$c/c_{\max}$", fontsize=_fs, pad=40)   # math title on top
+            cbar.ax.tick_params(labelsize=_fs)
     fig.tight_layout()
     if save_path is not None:
         fig.savefig(str(save_path), dpi=150); plt.close(fig)

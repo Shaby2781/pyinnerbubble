@@ -24,11 +24,13 @@ from pathlib import Path
 
 import numpy as np
 
+from pyinnerbubble import use_matlab_style
+
 from pyinnerbubble.assimilation import (
     assimilate_boundary_velocity,
     interpolate_measured_field_to_mesh,
     plot_assimilation,
-    plot_velocity_field_on_mesh,
+    plot_measured_vs_reconstructed_field,
 )
 
 # ---------------------------------------------------------------------------
@@ -44,10 +46,8 @@ BUBBLE_VELOCITY_PX_PER_FRAME = 20.0  # bubble rise velocity in px/frame
 BUBBLE_VELOCITY_M_S = 0.21          # = 21 cm/s
 REYNOLDS = 301.0                    # = V * D / nu  (carries the physical scale)
 
-# The conformal map / mesh_low was built normalized by this reference (grid_build_example
-# D_REF). Rescaling by MESH_DREF_PX / BUBBLE_DIAMETER_PX puts the mesh in diameter units
-# (this is the original code's "scale" ~ 1.216). Set to whatever D_REF built mesh_low.
-MESH_DREF_PX = 1040.0
+# mesh_low was built (grid_build_example) with D_REF = the bubble equivalent diameter (853 px),
+# so it is already in diameter-normalized units -- no extra rescaling is needed here.
 
 NUM_OF_POINTS = 2   # free spline control points for the boundary velocity (as requested)
 MAXITER = 400        # optimizer iterations (raise for a tighter fit; each adds ~seconds)
@@ -61,7 +61,7 @@ WEIGHT_MAT = None
 OUT_DIR = REPO_ROOT / "output" / "data_assimilation"
 # ---------------------------------------------------------------------------
 
-MESH_TO_DIAMETER = MESH_DREF_PX / BUBBLE_DIAMETER_PX  # mesh build-norm -> diameter units
+MESH_TO_DIAMETER = 1  # mesh is already in diameter units (built with D_REF = diameter)
 
 
 def _load_mesh():
@@ -90,12 +90,11 @@ def _measured_velocity_on_mesh(r_mat, z_mat):
 
     x_center = 0.5 * (shape[:, 0].min() + shape[:, 0].max())
     y_top = shape[:, 1].min()
+    z_max = np.max(z_mat)  # find the conformal mapping origin compare to bubble top
 
     def to_mesh_frame(x, y):
-        # same transform the conformal preprocessing applied to the bubble shape, then
-        # rescaled to diameter units -> equivalent to (px - ref) / BUBBLE_DIAMETER_PX.
-        cf_x = (x - x_center) / MESH_DREF_PX
-        cf_y = 0.25 - (y - y_top) / MESH_DREF_PX
+        cf_x = (x - x_center) / BUBBLE_DIAMETER_PX
+        cf_y = z_max - (y - y_top) / BUBBLE_DIAMETER_PX
         return cf_x * MESH_TO_DIAMETER, cf_y * MESH_TO_DIAMETER
 
     valid = (x_px >= 0) & (y_px >= 0) & np.isfinite(u_px) & np.isfinite(v_px)
@@ -112,6 +111,7 @@ def _measured_velocity_on_mesh(r_mat, z_mat):
 
 
 def main():
+    use_matlab_style()   # MATLAB-style figures
     r_mat, z_mat = _load_mesh()
     print(f"[DA] mesh {r_mat.shape}, r in [{r_mat.min():.3f}, {r_mat.max():.3f}], "
           f"z in [{z_mat.min():.3f}, {z_mat.max():.3f}] (diameter units)")
@@ -127,15 +127,7 @@ def main():
     base_weight = np.ones_like(r_mat) if WEIGHT_MAT is None else WEIGHT_MAT
     weight = base_weight * data_mask
 
-    # Plot the interpolated (measured) velocity field on the mesh -- |u| with a quiver
-    # overlay -- BEFORE the long solve, so it is saved even if the run is interrupted.
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    plot_velocity_field_on_mesh(
-        r_mat, z_mat, ur_meas, uz_meas,
-        title="interpolated measured velocity |u|",
-        save_path=OUT_DIR / "measured_field.png",
-    )
-    print(f"[DA] interpolated field plot saved -> {OUT_DIR / 'measured_field_no_mat.png'}")
 
     result = assimilate_boundary_velocity(
         r_mat, z_mat, ur_meas, uz_meas,
@@ -152,11 +144,10 @@ def main():
         cost_history=np.asarray(result.cost_history),
     )
     plot_assimilation(result, save_path=OUT_DIR / "assimilation_no_mat.png")
-    # Reconstructed field |u| + quiver, same style as the measured field (for comparison).
-    plot_velocity_field_on_mesh(
-        result.r_mat, result.z_mat, result.u_r, result.u_z,
-        title="reconstructed velocity |u|",
-        save_path=OUT_DIR / "reconstructed_field_no_mat.png",
+    # One figure: assimilated field on r >= 0, measured field mirrored to r < 0.
+    plot_measured_vs_reconstructed_field(
+        result.r_mat, result.z_mat, ur_meas, uz_meas, result.u_r, result.u_z,
+        save_path=OUT_DIR / "measured_vs_reconstructed_no_mat.png",
     )
     print(f"[DA] results saved -> {OUT_DIR}")
 

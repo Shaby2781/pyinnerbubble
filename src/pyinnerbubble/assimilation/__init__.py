@@ -21,6 +21,7 @@ from .flow_reconstruction import (
     compute_mesh_metrics,
     interpolate_measured_field_to_mesh,
     plot_assimilation,
+    plot_measured_vs_reconstructed_field,
     plot_velocity_field_on_mesh,
     reconstruct_flow_field,
 )
@@ -52,5 +53,6 @@ __all__ = [
     "interpolate_measured_field_to_mesh",
     "boundary_velocity_profile",
     "plot_assimilation",
+    "plot_measured_vs_reconstructed_field",
     "plot_velocity_field_on_mesh",
 ]

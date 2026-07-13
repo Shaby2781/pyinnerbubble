@@ -16,6 +16,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+from ..plotting import matlab_styled
 from scipy.optimize import curve_fit, fsolve
 from scipy.signal import savgol_filter
 from shapely.geometry import LineString, Point
@@ -258,6 +259,7 @@ def _calc_edge_position_one_ellipse_exp(
     return real_shape
 
 
+@matlab_styled
 def _plot_reconstruction(plif_image, shadowgraph_image, inner_region, real_shape, rot_plif_contour, save_dir=None):
     import matplotlib.pyplot as plt
 

@@ -7,4 +7,7 @@ Pipeline stages (see submodules):
     transport     -- scalar advection-diffusion and Sherwood number calculation
 """
 
+from .plotting import use_matlab_style
+
 __version__ = "0.1.0"
+__all__ = ["use_matlab_style"]

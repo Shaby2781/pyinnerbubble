@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from ..plotting import matlab_styled
 
 
 @dataclass
@@ -72,6 +73,7 @@ def _to_gray(image: np.ndarray) -> np.ndarray:
     return image
 
 
+@matlab_styled
 def plot_flow_quiver(image: np.ndarray, flow: np.ndarray, step: int = 40, save_path=None) -> None:
     """Overlay a quiver plot of the flow field on the image, sampled every ``step`` pixels.
 

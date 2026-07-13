@@ -19,6 +19,8 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
+from pyinnerbubble import use_matlab_style
+
 from pyinnerbubble.geometry import (
     CropParams,
     build_camera_plane_mapping,
@@ -85,7 +87,7 @@ FARNEBACK_PARAMS = FarnebackParams(
     neighborhood_size=1, filter_size=15, poly_sigma=1.1,
 )
 
-SMOOTH_RADIUS = 14  # 2D Savitzky-Golay smoothing half window 7pt + farneback 7pt = 14 px
+SMOOTH_RADIUS = 7  # 2D Savitzky-Golay smoothing half window 7pt + farneback 7pt = 14 px
 
 # Edge removal: discard mapped velocity within this many pixels INSIDE the bubble edge,
 # where the Farneback and Savitzky-Golay windows reach across the interface and average
@@ -220,6 +222,7 @@ def _compute_optic_flow_between_frames(frame_a, frame_b, plif_a_cropped, plif_b_
 
 
 def main():
+    use_matlab_style()   # MATLAB-style figures
     if not SAM_CHECKPOINT.exists():
         raise FileNotFoundError(
             f"SAM checkpoint not found at {SAM_CHECKPOINT}. "

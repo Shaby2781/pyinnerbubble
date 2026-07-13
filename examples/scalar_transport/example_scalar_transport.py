@@ -20,6 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
+from pyinnerbubble import use_matlab_style
+
 from pyinnerbubble.transport import (
     plot_final_concentration,
     plot_sherwood_vs_pe,
@@ -38,13 +40,14 @@ ASSIMILATION_FILE = SCRIPT_DIR / "assimilation.npz"
 
 T_END_DIFFUSION = 0.08   # simulation end time in DIFFUSION-time units (t/Pe)
 N_TIME = 1001            # number of time points on the shared diffusion-time axis
-PE_VEC = [10, 30,60, 100, 300, 600, 1000]   # Peclet numbers, one Sh(t) curve each
+PE_VEC = [10,60, 100, 300, 600, 1000]   # Peclet numbers, one Sh(t) curve each
 
 OUT_DIR = REPO_ROOT / "output" / "scalar_transport"
 # ---------------------------------------------------------------------------
 
 
 def main():
+    use_matlab_style()   # MATLAB-style figures
     if not ASSIMILATION_FILE.exists():
         raise FileNotFoundError(
             f"Assimilation file not found at {ASSIMILATION_FILE}. Put the data-assimilation "

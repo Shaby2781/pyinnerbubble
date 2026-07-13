@@ -25,6 +25,7 @@ import time
 from dataclasses import dataclass, field
 
 import numpy as np
+from ..plotting import matlab_styled
 from scipy.integrate import cumulative_trapezoid, solve_ivp
 from scipy.interpolate import LinearNDInterpolator, splev, splrep
 from scipy.optimize import minimize
@@ -458,36 +459,43 @@ def boundary_velocity_profile(result: AssimilationResult, n_dense: int = 300):
     return point_ctrl, vel_ctrl, point_dense, vel_dense
 
 
+@matlab_styled
 def plot_assimilation(result: AssimilationResult, save_path=None) -> None:
     """Plot the optimizer cost trace, the reconstructed field, and the boundary velocity."""
     import matplotlib.pyplot as plt
 
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(16, 5))
-    if result.cost_history:
-        ax1.plot(range(1, len(result.cost_history) + 1), result.cost_history, "o-")
-    ax1.set_xlabel("iteration"); ax1.set_ylabel("cost"); ax1.set_title("optimization trace")
-    ax1.set_yscale("log")
+    # Three panels share one row, so each axes is small -- scale ALL text (ticks, labels,
+    # legend) 1.5x relative to the library style, for this figure only. The whole body stays
+    # inside the rc_context because relative font sizes resolve at draw/save time.
+    with plt.rc_context({"font.size": plt.rcParams["font.size"] * 1.5}):
+        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(16, 5))
+        if result.cost_history:
+            ax1.plot(range(1, len(result.cost_history) + 1), result.cost_history, "o-")
+        ax1.set_xlabel("iteration"); ax1.set_ylabel("cost"); #ax1.set_title("optimization trace")
+        ax1.set_yscale("log")
 
-    ax2.contour(result.r_mat, result.z_mat, result.psi, linewidths=1.2)
-    ax2.plot(result.r_mat[:, -1], result.z_mat[:, -1], "k", linewidth=2)
-    ax2.set_aspect("equal"); ax2.set_title("reconstructed streamlines")
-    ax2.set_xlabel("r"); ax2.set_ylabel("z")
+        ax2.contour(result.r_mat, result.z_mat, result.psi, linewidths=1.2)
+        ax2.plot(result.r_mat[:, -1], result.z_mat[:, -1], "k", linewidth=2)
+        ax2.set_aspect("equal"); #ax2.set_title("reconstructed streamlines")
+        #ax2.set_xlabel("r"); ax2.set_ylabel("z")
+        ax2.axis('off')
 
-    point_ctrl, vel_ctrl, point_dense, vel_dense = boundary_velocity_profile(result)
-    ax3.plot(point_dense, vel_dense, "-", label="spline")
-    ax3.plot(point_ctrl, vel_ctrl, "o", label="control points")
-    ax3.axhline(0, color="0.7", linewidth=0.8)
-    ax3.set_xlabel("point number"); ax3.set_ylabel("boundary velocity")
-    ax3.set_title("interfacial velocity"); ax3.set_xticks(point_ctrl); ax3.legend()
+        point_ctrl, vel_ctrl, point_dense, vel_dense = boundary_velocity_profile(result)
+        ax3.plot(point_dense, vel_dense, "-", label="spline")
+        ax3.plot(point_ctrl, vel_ctrl, "o", label="control points")
+        ax3.axhline(0, color="0.7", linewidth=0.8)
+        ax3.set_xlabel("point number"); ax3.set_ylabel("boundary velocity")
+        #ax3.set_title("interfacial velocity"); ax3.set_xticks(point_ctrl); ax3.legend()
 
-    fig.tight_layout()
-    if save_path is not None:
-        fig.savefig(str(save_path), dpi=150)
-    else:
-        plt.show()
+        fig.tight_layout()
+        if save_path is not None:
+            fig.savefig(str(save_path), dpi=150)
+        else:
+            plt.show()
 
 
-def plot_velocity_field_on_mesh(r_mat, z_mat, u_r, u_z, title="velocity field",
+@matlab_styled
+def plot_velocity_field_on_mesh(r_mat, z_mat, u_r, u_z, title=None,
                                 quiver_step=1, quiver_scale=None, save_path=None) -> None:
     """Plot a velocity field on the mesh: |u| as a color map with a quiver overlay.
 
@@ -512,13 +520,84 @@ def plot_velocity_field_on_mesh(r_mat, z_mat, u_r, u_z, title="velocity field",
     fig, ax = plt.subplots()
     # gouraud shading: treat (r_mat, z_mat) as node positions on the curvilinear body-fitted
     # mesh (the coordinates are not a monotonic rectilinear grid, so flat shading misplaces cells).
-    pc = ax.pcolormesh(r_mat, z_mat, mag, shading="gouraud", cmap="viridis")
-    fig.colorbar(pc, ax=ax, label="|u|")
+    pc = ax.pcolormesh(r_mat, z_mat, mag, shading="gouraud", cmap="hot")
+    _cbfs = plt.rcParams["font.size"]   # same size as ticks/labels   # 2x colorbar font
+    cbar = fig.colorbar(pc, ax=ax, shrink=0.5)   # half-height colorbar
+    cbar.ax.set_title(r"$|u|$", fontsize=_cbfs, pad=12)   # math title on top above the bar
+    cbar.ax.tick_params(labelsize=_cbfs)
     s = max(1, int(quiver_step))
-    ax.quiver(r_mat[::s, ::s], z_mat[::s, ::s], u_r[::s, ::s], u_z[::s, ::s],
-              color="white", scale=quiver_scale)
+    #ax.quiver(r_mat[::s, ::s], z_mat[::s, ::s], u_r[::s, ::s], u_z[::s, ::s],
+    #          color="k", scale=quiver_scale)
     ax.plot(r_mat[:, -1], z_mat[:, -1], "k-", linewidth=2)   # interface
     ax.set_aspect("equal"); ax.set_title(title)
+    #ax.set_xlabel("r"); ax.set_ylabel("z")
+    ax.axis('off')
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(str(save_path), dpi=150)
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+@matlab_styled
+def plot_measured_vs_reconstructed_field(r_mat, z_mat, ur_meas, uz_meas, u_r, u_z,
+                                         quiver_step=1, quiver_scale=None,
+                                         save_path=None) -> None:
+    """Single-figure comparison: reconstructed field on r >= 0, measured field mirrored to r < 0.
+
+    Both fields live on the same half-plane mesh (the flow is axisymmetric), so the
+    measured field is reflected across the symmetry axis: (r, z) -> (-r, z), which
+    flips the radial velocity component (u_r -> -u_r) while |u| is unchanged. Both
+    halves share one color scale and one colorbar.
+
+    Parameters
+    ----------
+    r_mat, z_mat : (M, N) arrays
+        Mesh node coordinates (r >= 0, column -1 is the interface).
+    ur_meas, uz_meas : (M, N) arrays
+        Measured radial / axial velocity on the mesh (plotted mirrored, r < 0).
+    u_r, u_z : (M, N) arrays
+        Reconstructed (assimilated) radial / axial velocity on the mesh (plotted as-is, r >= 0).
+    quiver_step : int
+        Stride between plotted arrows (1 = every node).
+    quiver_scale : float or None
+        matplotlib quiver ``scale`` (smaller = longer arrows). None = auto.
+    """
+    import matplotlib.pyplot as plt
+
+    mag_meas = np.sqrt(ur_meas ** 2 + uz_meas ** 2)
+    mag_rec = np.sqrt(u_r ** 2 + u_z ** 2)
+    vmax = max(np.nanmax(mag_meas), np.nanmax(mag_rec))
+
+    fig, ax = plt.subplots()
+    pc = ax.pcolormesh(r_mat, z_mat, mag_rec, shading="gouraud", cmap="hot",
+                       vmin=0.0, vmax=vmax)
+    ax.pcolormesh(-r_mat, z_mat, mag_meas, shading="gouraud", cmap="hot",
+                  vmin=0.0, vmax=vmax)
+    _cbfs = plt.rcParams["font.size"]   # same size as ticks/labels
+    cbar = fig.colorbar(pc, ax=ax, shrink=0.5)   # half-height colorbar
+    cbar.ax.set_title(r"$|u|$", fontsize=_cbfs, pad=12)
+    cbar.ax.tick_params(labelsize=_cbfs)
+    ax.axis('off')
+    # Both halves in ONE quiver call so they share a single arrow scale (separate calls
+    # auto-scale independently, making equal velocities render at different lengths).
+    s = max(1, int(quiver_step))
+    r_q = np.concatenate([r_mat[::s, ::s].ravel(), -r_mat[::s, ::s].ravel()])
+    z_q = np.concatenate([z_mat[::s, ::s].ravel(), z_mat[::s, ::s].ravel()])
+    u_q = np.concatenate([u_r[::s, ::s].ravel(), -ur_meas[::s, ::s].ravel()])
+    w_q = np.concatenate([u_z[::s, ::s].ravel(), uz_meas[::s, ::s].ravel()])
+    ax.quiver(r_q, z_q, u_q, w_q, color="k", scale=quiver_scale)
+
+    ax.plot(r_mat[:, -1], z_mat[:, -1], "k-", linewidth=2)    # interface, both halves
+    ax.plot(-r_mat[:, -1], z_mat[:, -1], "k-", linewidth=2)
+    ax.axvline(0, color="k", linewidth=0.8, linestyle="--")   # symmetry axis
+
+    z_top = z_mat.max()
+    ax.text(-0.5 * r_mat.max(), z_top, "measured", ha="center", va="bottom")
+    ax.text(0.5 * r_mat.max(), z_top, "assimilated", ha="center", va="bottom")
+
+    ax.set_aspect("equal")
     ax.set_xlabel("r"); ax.set_ylabel("z")
     fig.tight_layout()
     if save_path is not None:

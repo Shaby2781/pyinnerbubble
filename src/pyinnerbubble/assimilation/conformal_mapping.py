@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
+from ..plotting import matlab_styled
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +338,7 @@ def load_conformal_map(path: str | Path) -> ConformalMapResult:
 # ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
+@matlab_styled
 def plot_conformal_map(result: ConformalMapResult, n_grid: int = 31,
                        save_path: str | Path | None = None) -> None:
     """Plot a polar grid on the unit disk and its image on the bubble region.
@@ -360,7 +362,7 @@ def plot_conformal_map(result: ConformalMapResult, n_grid: int = 31,
     axa.plot(circ_lines.imag.T, circ_lines.real.T, "r", lw=0.7)
     axa.plot(ray_lines.imag.T, ray_lines.real.T, "b", lw=0.7)
     axa.plot(np.cos(t), np.sin(t), "k", lw=2)
-    axa.set_aspect("equal"); axa.set_title("(a) unit disk")
+    axa.set_aspect("equal"); #axa.set_title("(a) unit disk")
     axa.set_xlabel("Im(z)"); axa.set_ylabel("Re(z)")
 
     axb.plot(mapped_circ.imag.T, mapped_circ.real.T, "r", lw=0.7)
@@ -368,7 +370,7 @@ def plot_conformal_map(result: ConformalMapResult, n_grid: int = 31,
     axb.plot(result.gamma_curve.imag, result.gamma_curve.real, "k-", lw=2, label="fitted")
     if result.z_norm is not None:
         axb.plot(result.z_norm.imag, result.z_norm.real, "m--", lw=1, label="measured")
-    axb.set_aspect("equal"); axb.set_title("(b) bubble region")
+    axb.set_aspect("equal"); #axb.set_title("(b) bubble region")
     axb.set_xlabel("Im(w)"); axb.set_ylabel("Re(w)"); axb.legend()
     fig.tight_layout()
 

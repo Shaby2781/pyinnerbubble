@@ -18,6 +18,8 @@ from pathlib import Path
 
 import numpy as np
 
+from pyinnerbubble import use_matlab_style
+
 from pyinnerbubble.assimilation import (
     build_bubble_mesh,
     build_conformal_map,
@@ -38,10 +40,10 @@ REPO_ROOT = SCRIPT_DIR.parent.parent  # up through examples/ to the repo root
 # Bubble boundary from the geometry stage: (x, y) pixel coordinates, one point per row.
 BUBBLE_SHAPE_FILE = SCRIPT_DIR / "bubble_shape_tot.txt"
 
-# Reference bubble diameter in pixels (MATLAB Dref). The boundary is divided by this
-# so the whole data-assimilation pipeline works in diameter-normalized units. It is
-# roughly the boundary's horizontal extent -- for the bundled EXP8 shape that is ~1040.
-D_REF = 1040.0
+# Reference bubble diameter in pixels (MATLAB Dref). The boundary is divided by this so the
+# whole data-assimilation pipeline works in diameter-normalized units. Use the bubble's
+# equivalent diameter -- for the bundled EXP8 shape that is 853 px (= 22 mm).
+D_REF = 853.0
 
 # --- conformal-map parameters ---
 FOURIER_ORDER = 31   # harmonics in the Fourier fit of the boundary
@@ -55,7 +57,7 @@ N_THETA_HALF = 31    # half the number of angular nodes; total angular nodes = 2
 N_RADIAL = 25        # number of radial nodes (disk center r=0 -> interface r=1)
 BETA_THETA = 3.0     # angular clustering strength; larger = denser toward the two ends
 BETA_RADIAL = 4.0    # radial clustering strength; larger = denser toward the interface r=1
-ALPHA = 0.622        # angular split: nodes cluster at ALPHA*pi, tuned so that lands on the
+ALPHA = 0.705         # angular split: nodes cluster at ALPHA*pi, tuned so that lands on the
                      # bubble rim (widest point). Shape-specific: theta_rim/pi for this EXP8
                      # bubble is ~0.597 (rim at ~107 deg on the disk). Retune per bubble.
 N_SMOOTH = 20        # Laplacian smoothing passes on the angular node distribution
@@ -67,6 +69,7 @@ PLOT = True          # save preview plots alongside the .npz files
 
 
 def main():
+    use_matlab_style()   # MATLAB-style figures
     if not BUBBLE_SHAPE_FILE.exists():
         raise FileNotFoundError(
             f"Bubble shape file not found at {BUBBLE_SHAPE_FILE}. "

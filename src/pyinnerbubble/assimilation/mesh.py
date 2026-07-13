@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from ..plotting import matlab_styled
 
 from .conformal_mapping import ConformalMapResult, load_conformal_map
 
@@ -164,18 +165,19 @@ def load_mesh(path: str | Path) -> BubbleMeshResult:
 # ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
+@matlab_styled
 def plot_mesh(result: BubbleMeshResult, save_path: str | Path | None = None) -> None:
     """Plot the computational grid (unit half-disk) and the physical grid (bubble)."""
     import matplotlib.pyplot as plt
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 5))
     ax1.plot(result.z_mat.real, result.z_mat.imag, "x", ms=3)
-    ax1.set_aspect("equal"); ax1.set_title("Computational grid (unit disk)")
+    ax1.set_aspect("equal"); #ax1.set_title("Computational grid (unit disk)")
     ax1.set_xlabel("Re(z)"); ax1.set_ylabel("Im(z)")
 
     ax2.plot(result.x_mat, result.y_mat, "x", ms=3)
-    ax2.set_aspect("equal"); ax2.set_title("Physical grid (bubble region)")
-    ax2.set_xlabel("Im(w)  [horizontal]"); ax2.set_ylabel("Re(w)  [rise]")
+    ax2.set_aspect("equal"); #ax2.set_title("Physical grid (bubble region)")
+    ax2.set_xlabel("Im(w)"); ax2.set_ylabel("Re(w)")
     fig.tight_layout()
 
     if save_path is not None:

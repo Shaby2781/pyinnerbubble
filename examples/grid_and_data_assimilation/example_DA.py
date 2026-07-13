@@ -28,11 +28,13 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from pyinnerbubble import use_matlab_style
+
 from pyinnerbubble.assimilation import (
     assimilate_boundary_velocity,
     interpolate_measured_field_to_mesh,
     plot_assimilation,
-    plot_velocity_field_on_mesh,
+    plot_measured_vs_reconstructed_field,
 )
 
 # ---------------------------------------------------------------------------
@@ -51,10 +53,8 @@ BUBBLE_VELOCITY_PX_PER_FRAME = 20.0  # bubble rise velocity in px/frame (matches
 BUBBLE_VELOCITY_M_S = 0.21          # = 21 cm/s
 REYNOLDS = 301.0                    # = V * D / nu  (carries the physical scale)
 
-# The conformal map / mesh was built normalized by this reference (grid_build_example D_REF).
-# Rescaling by MESH_DREF_PX / BUBBLE_DIAMETER_PX puts the mesh in diameter units (the original
-# code's "scale" ~ 1.216). Set to whatever D_REF built the mesh file.
-MESH_DREF_PX = 1040.0
+# The mesh (grid_build_example) was built with D_REF = the bubble equivalent diameter (853 px),
+# so it is already in diameter-normalized units -- no extra rescaling is needed here.
 
 NUM_OF_POINTS = 2   # free spline control points for the boundary velocity
 MAXITER = 400       # optimizer iterations (raise for a tighter fit; each adds ~seconds)
@@ -67,9 +67,7 @@ USE_INVERSE_VARIANCE_WEIGHT = True
 OUT_DIR = REPO_ROOT / "output" / "data_assimilation"
 # ---------------------------------------------------------------------------
 
-MESH_TO_DIAMETER = MESH_DREF_PX / BUBBLE_DIAMETER_PX  # mesh build-norm -> diameter units
-
-
+MESH_TO_DIAMETER = 1  # mesh is already in diameter units (built with D_REF = diameter)
 def _load_mesh():
     m = np.load(MESH_FILE)
     # x_mat = radial (r), y_mat = axial (z); rescale from build-normalization to diameter units.
@@ -94,10 +92,10 @@ def _measured_on_mesh(r_mat, z_mat):
 
     x_center = 0.5 * (shape[:, 0].min() + shape[:, 0].max())
     y_top = shape[:, 1].min()
-
+    z_max=np.max(z_mat) # find the conformal mapping origin compare to bubble top
     def to_mesh_frame(x, y):
-        cf_x = (x - x_center) / MESH_DREF_PX
-        cf_y = 0.25 - (y - y_top) / MESH_DREF_PX
+        cf_x = (x - x_center) / BUBBLE_DIAMETER_PX
+        cf_y = z_max - (y - y_top) / BUBBLE_DIAMETER_PX
         return cf_x * MESH_TO_DIAMETER, cf_y * MESH_TO_DIAMETER
 
     # Velocity samples: only points with real velocity data (the edge-removal band is NaN).
@@ -118,6 +116,7 @@ def _measured_on_mesh(r_mat, z_mat):
 
 
 def main():
+    use_matlab_style()   # MATLAB-style figures
     r_mat, z_mat = _load_mesh()
     print(f"[DA] mesh {r_mat.shape}, r in [{r_mat.min():.3f}, {r_mat.max():.3f}], "
           f"z in [{z_mat.min():.3f}, {z_mat.max():.3f}] (diameter units)")
@@ -135,19 +134,20 @@ def main():
           f"{int((weight > 0).sum())} weighted nodes")
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    # Save the measured field + the weight on the mesh BEFORE the long solve (survives an interrupt).
-    plot_velocity_field_on_mesh(
-        r_mat, z_mat, ur_meas, uz_meas,
-        title="interpolated measured velocity |u|", save_path=OUT_DIR / "measured_field.png",
-    )
+    # Save the weight on the mesh BEFORE the long solve (survives an interrupt). The measured
+    # field is plotted after the solve, mirrored next to the reconstructed field in one figure.
     fig, ax = plt.subplots()
-    pc = ax.pcolormesh(r_mat, z_mat, weight, shading="gouraud", cmap="viridis")
-    fig.colorbar(pc, ax=ax, label="weight (inverse variance)")
+    pc = ax.pcolormesh(r_mat, z_mat, weight, shading="gouraud", cmap="hot")
+    _cbfs = plt.rcParams["font.size"]   # same size as ticks/labels
+    cbar = fig.colorbar(pc, ax=ax, shrink=0.5)   # half-height colorbar, 2x font
+    cbar.ax.set_title("M", fontsize=_cbfs, pad=12)   # title on top; pad raises it
+    cbar.ax.tick_params(labelsize=_cbfs)
     ax.plot(r_mat[:, -1], z_mat[:, -1], "k", linewidth=2)
-    ax.set_aspect("equal"); ax.set_title("assimilation weight on mesh")
-    ax.set_xlabel("r"); ax.set_ylabel("z")
+    ax.set_aspect("equal"); #ax.set_title("assimilation weight on mesh")
+    #ax.set_xlabel("r"); ax.set_ylabel("z")
+    ax.axis('off')
     fig.savefig(OUT_DIR / "weight_on_mesh.png", dpi=150); plt.close(fig)
-    print(f"[DA] measured-field + weight plots saved in {OUT_DIR}")
+    print(f"[DA] weight plot saved in {OUT_DIR}")
 
     result = assimilate_boundary_velocity(
         r_mat, z_mat, ur_meas, uz_meas,
@@ -164,9 +164,10 @@ def main():
         weight=weight, cost_history=np.asarray(result.cost_history),
     )
     plot_assimilation(result, save_path=OUT_DIR / "assimilation.png")
-    plot_velocity_field_on_mesh(
-        result.r_mat, result.z_mat, result.u_r, result.u_z,
-        title="reconstructed velocity |u|", save_path=OUT_DIR / "reconstructed_field.png",
+    # One figure: assimilated field on r >= 0, measured field mirrored to r < 0.
+    plot_measured_vs_reconstructed_field(
+        result.r_mat, result.z_mat, ur_meas, uz_meas, result.u_r, result.u_z,
+        save_path=OUT_DIR / "measured_vs_reconstructed.png",
     )
     print(f"[DA] results saved -> {OUT_DIR}")
 

@@ -15,6 +15,7 @@ from functools import partial
 from pathlib import Path as FilePath
 
 import numpy as np
+from ..plotting import matlab_styled
 from matplotlib.path import Path as MplPath
 from scipy.optimize import curve_fit
 
@@ -92,6 +93,7 @@ def _ray_trace_camera_point(point, e_up, r_up, z0_up, a_exp, b_exp, c_exp, mu_oi
     return camera_pos
 
 
+@matlab_styled
 def _plot_mapping(plif_image, bubble_shape_closed, inner_region, ellipse_up_points, exp_curve, exp_curve_z, mean_x, physical_x, physical_z, save_dir=None):
     import matplotlib.pyplot as plt
 

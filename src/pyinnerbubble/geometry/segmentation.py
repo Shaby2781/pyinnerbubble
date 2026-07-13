@@ -13,6 +13,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from ..plotting import matlab_styled
 
 from pyinnerbubble.io import save_contour
 
@@ -95,6 +96,7 @@ def segment_largest_contour(
     return contour, mask, score
 
 
+@matlab_styled
 def plot_contour(image: np.ndarray, contour: np.ndarray, title: str = "Detected boundary") -> None:
     import matplotlib.pyplot as plt
 
