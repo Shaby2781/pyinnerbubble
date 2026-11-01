@@ -23,13 +23,23 @@ The scalar transport stage then solves the axisymmetric advection-diffusion of a
 scalar on that reconstructed flow field and extracts the time-dependent Sherwood number
 over a range of Peclet numbers — completing the full method of the paper end to end.
 
+The assimilation stage also supports a **deforming (moving) interface**: a measured normal
+velocity can be prescribed at the surface (`assimilate_boundary_velocity_with_moving_surface`).
+Forward solves can also use an arbitrary interfacial velocity profile
+(`reconstruct_flow_field_from_profile`), e.g. to ask what flow a partially mobile interface
+would drive.
+
+A workflow diagram of the full pipeline is in [`docs/workflow.tex`](docs/workflow.tex) (TikZ source;
+`pdflatex workflow.tex` renders it).
+
 ## Status
 
-Work in progress — scripts are being migrated from research code into this package one module at a time.
+Alpha (v0.1.0). The full method of the paper is implemented and every tutorial in
+`examples/` runs end to end on the bundled data. APIs may still change before 1.0.
 
 ## Installation
 
-For users, once this repo is on GitHub:
+For users:
 
 ```bash
 pip install git+https://github.com/Shaby2781/pyinnerbubble.git
@@ -59,9 +69,9 @@ The SAM model checkpoint (e.g. `sam_vit_h_4b8939.pth`) is not included in this r
 [`checkpoints/README.md`](checkpoints/README.md) for direct links), which is where the
 example scripts expect it by default.
 
-## Example
+## Tutorials
 
-To try the example, clone the full repo (`pip install` alone won't include it):
+To run the tutorials, clone the full repo (`pip install` alone won't include them):
 
 ```bash
 git clone https://github.com/Shaby2781/pyinnerbubble.git
@@ -69,7 +79,32 @@ cd pyinnerbubble
 pip install -e ".[dev,segmentation]"
 ```
 
-The `examples/` folder is organized by pipeline stage:
+The `examples/` folder has one tutorial per pipeline stage. Every input each tutorial needs is
+bundled next to it, and paths resolve from the script's own location, so you can launch them from
+any directory. Results go to `output/<stage>/` (gitignored). Each stage ships with precomputed
+inputs, so any tutorial can also be run on its own.
+
+| # | Tutorial | Typical runtime | Main outputs |
+|---|---|---|---|
+| 1 | `bubble_shape_and_optic_flow/run_multi_frame_pipeline.py` | dominated by SAM (needs the checkpoint) | `output/frame_00xx/`, `output/opticflow_0024_0025/velocity_field.png` |
+| 2 | `grid_and_data_assimilation/grid_build_example.py` | seconds | `output/conformal_map/` (`conformal_map.npz`, `mesh.npz`, previews) |
+| 3 | `grid_and_data_assimilation/example_DA.py` | ~4 min | `output/data_assimilation/assimilation.npz`, `measured_vs_reconstructed.png` |
+| 4 | `grid_and_data_assimilation/example_DA_no_weighting.py` | ~4 min | `output/data_assimilation/*_no_mat.*` |
+| 5 | `scalar_transport/example_scalar_transport.py` | < 1 min | `output/scalar_transport/sherwood_vs_time.png`, `sherwood_vs_pe.png` |
+
+Run them from the repo root, e.g.:
+
+```bash
+python examples/grid_and_data_assimilation/grid_build_example.py
+python examples/grid_and_data_assimilation/example_DA.py
+python examples/scalar_transport/example_scalar_transport.py
+```
+
+[`examples/PyInnerBubble_examples.pdf`](examples/PyInnerBubble_examples.pdf) shows the figures each
+tutorial is expected to produce. To use your own data, edit only the `CONFIG` block at the top of
+each script.
+
+Details:
 
 - [`examples/bubble_shape_and_optic_flow/run_multi_frame_pipeline.py`](examples/bubble_shape_and_optic_flow/run_multi_frame_pipeline.py)
   runs the shape + velocity pipeline end to end on a pair of frames (the four `.jpg` images live
@@ -87,13 +122,18 @@ The `examples/` folder is organized by pipeline stage:
   measured interior field, plotting the optimization trace, reconstructed streamlines, and the fitted
   edge-velocity profile. **The bundled mesh is intentionally coarse so it runs on a laptop in a few
   minutes — it is a demonstration, not a research-grade grid** (see the note in the documentation).
+- [`examples/grid_and_data_assimilation/example_DA_no_weighting.py`](examples/grid_and_data_assimilation/example_DA_no_weighting.py)
+  runs the same solve with a uniform weight on a single-frame field in the optic-flow stage's own
+  text-file format (`x_mat.txt`, `y_mat.txt`, `u_phys.txt`, `v_phys.txt`, all bundled), which shows how to
+  chain the optic-flow output straight into the assimilation.
 - [`examples/scalar_transport/example_scalar_transport.py`](examples/scalar_transport/example_scalar_transport.py)
   takes an assimilation result (`assimilation.npz`, the reconstructed flow field, included alongside it)
   and solves the passive-scalar advection-diffusion for a range of Peclet numbers, producing the
   Sherwood-number-vs-diffusion-time curves, Sherwood-vs-Peclet, and the final scalar-concentration
   fields. Edit its `CONFIG` block (Peclet vector, end time, number of time points) then run.
 
-Run `pytest` from the repo root to run the test suite too.
+Run `pytest` from the repo root to check your installation (the suite runs in a few seconds and
+does not need the SAM checkpoint).
 
 Each pipeline stage also has its own CLI, installed by `pip install` (no clone needed):
 `pyinnerbubble-segment`, `pyinnerbubble-reconstruct-shape`, `pyinnerbubble-camera-mapping`,
@@ -103,8 +143,14 @@ of them with `--help` for its full argument list.
 ## Documentation
 
 [`docs/documentation.docx`](docs/documentation.docx) has the full function-by-function
-reference (signatures, parameters, return values) for every module, plus setup/installation
-instructions.
+reference (signatures, parameters, return values) for every module, a tutorial overview, and
+setup/installation instructions (including running on AWS EC2).
+
+## Citation
+
+If you use pyInnerBubble in your work, please cite:
+
+> R. Shabtay and I. Jacobi, "Internal Velocity Measurements and Scalar Transport Simulations in Rising Bubbles" (under review).
 
 ## License
 

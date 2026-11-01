@@ -59,6 +59,15 @@ class BubbleShapeResult:
     """Contour centroid z, in the same cropped pixel frame as ``real_shape``/``inner_region``."""
     shadow_leading_edge_y: float
     fit_params: dict
+    plif_color_cropped: Optional[np.ndarray] = None
+    """The same crop as ``plif_image_cropped``, but keeping the source image's colour channels.
+
+    ``plif_image_cropped`` is greyscale because that is what the Farneback optic flow consumes;
+    this is the identical window on the rotated COLOUR image, for display and movies. Same
+    height/width, so anything that registers or pads one (e.g. aligning the bubble top or
+    padding to a common size across frames) works on the other unchanged. ``None`` when the source
+    PLIF was already single-channel.
+    """
 
 
 def rotate_curve(points: np.ndarray, angle: float) -> tuple[float, float, np.ndarray]:
@@ -411,7 +420,12 @@ def reconstruct_bubble_shape(
     real_shape[:, 1] -= y_min_lim
     move_vel = int(np.round(velocity_px_per_frame / 2))
 
-    plif_image_cropped = gray_plif_image[y_min_lim:y_max_lim + int(crop.y_bottom_margin), x_min_lim:x_max_lim]
+    plif_crop_rows = slice(y_min_lim, y_max_lim + int(crop.y_bottom_margin))
+    plif_crop_cols = slice(x_min_lim, x_max_lim)
+    plif_image_cropped = gray_plif_image[plif_crop_rows, plif_crop_cols]
+    # the same window on the colour image, for display/movies -- the flow still uses the grey one
+    plif_color_cropped = (plif_rotated_img[plif_crop_rows, plif_crop_cols]
+                          if plif_rotated_img.ndim == 3 else None)
     shadowgraph_image_cropped = shadowgraph_rotated_img[
         y_min_lim + move_vel:y_max_lim + move_vel + int(crop.y_bottom_margin), x_min_lim:x_max_lim
     ]
@@ -434,6 +448,7 @@ def reconstruct_bubble_shape(
         inner_region=inner_region,
         rot_plif_contour=rot_plif_contour,
         plif_image_cropped=plif_image_cropped,
+        plif_color_cropped=plif_color_cropped,
         shadowgraph_image_cropped=shadowgraph_image_cropped,
         crop_size=(delta_x_frame, delta_y_frame),
         mean_r=float(mean_r - x_min_lim),

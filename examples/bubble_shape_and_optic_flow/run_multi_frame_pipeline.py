@@ -158,7 +158,7 @@ def _process_frame_geometry(frame_number, frame_data, velocity, angle_deg, mu_oi
         frame_data["shadowgraph_image"], frame_data["plif_image"],
         frame_data["shadowgraph_contour"], frame_data["plif_contour"],
         velocity_px_per_frame=velocity,
-        angle_to_rotate=np.deg2rad(-1),
+        angle_to_rotate=np.deg2rad(angle_deg),
         mu_oil_gas=mu_oil_gas,
         crop=crop,
         plot=plot_arg,

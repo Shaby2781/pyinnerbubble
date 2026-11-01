@@ -193,24 +193,139 @@ def _ode_ns(t, vec, psi, phi, variable_shape, metrics, r_mat, reynolds):
     return dvec
 
 
-def _integrate_to_steady(vel_vec, r_mat, z_mat, metrics, reynolds, psi0, phi0):
-    """March the NS system to steady state for a given boundary velocity, returning PSI, PHI."""
+def interface_psi_from_normal_velocity(r_mat, z_mat, u_n, enforce_closure=True,
+                                       warn_frac=0.05, check=True):
+    """Stream function ALONG the interface implied by a prescribed normal velocity.
+
+    For the axisymmetric Stokes stream function used here (``u_r = -(1/r) dpsi/dz``,
+    ``u_z = (1/r) dpsi/dr``) the two boundary derivatives carry different components::
+
+        u_t = +(1/r) dpsi/dn        (normal derivative  -> TANGENTIAL velocity)
+        u_n = -(1/r) dpsi/ds        (arclength derivative -> NORMAL velocity)
+
+    So a deforming (permeable-looking) interface does NOT change ``dpsi/dn`` -- that slot
+    already carries the tangential velocity being fitted. It makes PSI vary ALONG the
+    interface instead::
+
+        psi(s) = -int_0^s r * u_n ds'
+
+    which is exactly why ``psi = 0`` on the interface *is* the ``u_n = 0`` assumption of
+    :func:`assimilate_boundary_velocity`.
+
+    Parameters
+    ----------
+    r_mat, z_mat : (M, N) arrays
+        Body-fitted mesh; column -1 is the interface.
+    u_n : (M,) array
+        Outward normal velocity at the interface nodes, non-dimensional (normalized by the
+        same velocity scale as the measured field).
+    enforce_closure : bool
+        Remove the uniform offset that makes the net volume flux zero in this function's own
+        quadrature, guaranteeing the profile closes (see Notes). Default True.
+    warn_frac : float
+        Warn when the removed offset exceeds this fraction of ``u_n``'s rms -- a large
+        correction means the input carries a genuine net volume change, not interpolation
+        residue. Default 0.05.
+    check : bool
+        Enable the warning above.
+
+    Returns
+    -------
+    (M,) array
+        ``psi`` on the interface, starting at 0 and returning to 0.
+
+    Notes
+    -----
+    The interface profile begins and ends ON the symmetry axis, where ``psi = 0``. That
+    makes ``psi(s_end) = -int r u_n ds = 0`` a solvability condition -- physically, zero net
+    volume flux. A ``u_n`` that does not conserve volume leaves ``psi`` multivalued at the
+    axis; feed in a mass-conserving ``u_n`` (e.g. with the uniform offset removed).
+    """
+    curve_r = np.asarray(r_mat, dtype=float)[:, -1]
+    curve_z = np.asarray(z_mat, dtype=float)[:, -1]
+    u_n = np.asarray(u_n, dtype=float)
+    if u_n.shape != curve_r.shape:
+        raise ValueError(f"u_n has shape {u_n.shape}, expected {curve_r.shape} "
+                         f"(one value per interface node)")
+
+    dl = np.sqrt(np.diff(curve_r) ** 2 + np.diff(curve_z) ** 2)
+
+    if enforce_closure:
+        # Zero the net flux in the SAME trapezoid quadrature used for psi below, so the
+        # profile closes to round-off. Doing it here matters: u_n is usually made
+        # volume-conserving on the fine measured outline, then interpolated onto this much
+        # coarser mesh, and that interpolation reintroduces a small residual.
+        w = np.zeros_like(curve_r)
+        w[:-1] += 0.5 * dl
+        w[1:] += 0.5 * dl
+        denom = np.sum(w * curve_r)
+        offset = np.sum(w * curve_r * u_n) / denom if denom != 0 else 0.0
+        u_n = u_n - offset
+        rms = np.sqrt(np.mean(u_n ** 2))
+        if check and rms > 0 and abs(offset) > warn_frac * rms:
+            import warnings as _w
+            _w.warn(
+                f"u_n was not volume-conserving: removed a uniform offset of {offset:.3e}, "
+                f"which is {abs(offset) / rms:.0%} of its rms. A large correction means the "
+                f"prescribed normal velocity carries a real net volume change.",
+                RuntimeWarning, stacklevel=2)
+
+    f = curve_r * u_n                                   # r * u_n
+    psi_s = np.concatenate([[0.0], np.cumsum(0.5 * (f[:-1] + f[1:]) * dl)])
+
+    # The relation u_n = -(1/r) dpsi/ds assumes s increases along t = rot90(n_outward).
+    # Whether the mesh's row direction matches that depends on the mesh handedness, so
+    # determine it from the geometry instead of assuming: the outward normal is the grid
+    # xi direction (column -2 -> column -1), and cross(t_row, n) is -1 when the row
+    # direction already equals rot90(n), +1 when it is reversed.
+    t_row = np.gradient(np.column_stack([curve_r, curve_z]), axis=0)
+    t_row /= np.maximum(np.linalg.norm(t_row, axis=1, keepdims=True), 1e-300)
+    n_out = np.column_stack([curve_r - np.asarray(r_mat, float)[:, -2],
+                             curve_z - np.asarray(z_mat, float)[:, -2]])
+    n_out /= np.maximum(np.linalg.norm(n_out, axis=1, keepdims=True), 1e-300)
+    handedness = np.sign(np.mean(t_row[:, 0] * n_out[:, 1] - t_row[:, 1] * n_out[:, 0]))
+    psi_s = (handedness if handedness != 0 else -1.0) * psi_s
+
+    return psi_s
+
+
+def _integrate_to_steady(vel_vec, r_mat, z_mat, metrics, reynolds, psi0, phi0,
+                         psi_interface=None, vel_profile=None):
+    """March the NS system to steady state for a given boundary velocity, returning PSI, PHI.
+
+    ``psi_interface`` (optional, (M,)) is PSI along the interface. ``None`` keeps the
+    original impermeable condition ``psi = 0`` there (no normal velocity).
+
+    ``vel_profile`` (optional, (M,)) is the tangential velocity AT the interface nodes,
+    used verbatim instead of splining ``vel_vec``; ``vel_vec`` is then ignored."""
     r_xsi = _div_xsi(r_mat)
     z_xsi = _div_xsi(z_mat)
     curve_r, curve_z = r_mat[:, -1], z_mat[:, -1]
-    ds = np.sqrt(np.concatenate([[0], np.diff(curve_r)]) ** 2
-                 + np.concatenate([[0], np.diff(curve_z)]) ** 2)
-    s = cumulative_trapezoid(ds, initial=0)
 
-    n = len(vel_vec)
-    s4interp = np.linspace(s[0], s[-1], n + 2)
-    tck = splrep(s4interp, np.concatenate([[0], vel_vec, [0]]))
-    vel_interp = splev(s, tck)
+    if vel_profile is None:
+        ds = np.sqrt(np.concatenate([[0], np.diff(curve_r)]) ** 2
+                     + np.concatenate([[0], np.diff(curve_z)]) ** 2)
+        s = cumulative_trapezoid(ds, initial=0)
+
+        n = len(vel_vec)
+        s4interp = np.linspace(s[0], s[-1], n + 2)
+        tck = splrep(s4interp, np.concatenate([[0], vel_vec, [0]]))
+        vel_interp = splev(s, tck)
+    else:
+        vel_interp = np.asarray(vel_profile, dtype=float)
+        if vel_interp.shape != curve_r.shape:
+            raise ValueError(f"vel_profile has shape {vel_interp.shape}, expected "
+                             f"{curve_r.shape} (one value per interface node)")
 
     psi = psi0.copy()
     phi = phi0.copy()
     g_xsi = np.sqrt(r_xsi[:, -1] ** 2 + z_xsi[:, -1] ** 2)
-    psi[:, -2] = g_xsi * (vel_interp * curve_r)   # boundary condition from the tangential velocity
+    # Interface PSI: 0 for an impermeable surface, or the moving-surface profile.
+    psi_bnd = np.zeros_like(curve_r) if psi_interface is None else np.asarray(psi_interface, float)
+    psi[:, -1] = psi_bnd
+    # Tangential-velocity condition, written as a difference so it is unchanged by a
+    # non-zero interface PSI: (psi[-1] - psi[-2]) / g_xsi = -vel_interp * curve_r.
+    psi[:, -2] = psi_bnd + g_xsi * (vel_interp * curve_r)
 
     variable_shape = psi[1:-2, 1:-2].shape
     x0 = np.concatenate([psi[1:-2, 1:-2].ravel(), phi[1:-2, 1:-1].ravel()])
@@ -248,16 +363,100 @@ def _velocity_from_psi(psi, r_mat, z_mat, metrics, r_floor_zero_border=False):
     return u_r, u_z
 
 
-def reconstruct_flow_field(vel_vec, r_mat, z_mat, metrics, reynolds, psi0, phi0):
+def reconstruct_flow_field(vel_vec, r_mat, z_mat, metrics, reynolds, psi0, phi0,
+                           psi_interface=None):
     """Solve the NS flow for a boundary velocity vector and return ``(psi, phi, u_r, u_z)``."""
-    psi, phi = _integrate_to_steady(vel_vec, r_mat, z_mat, metrics, reynolds, psi0, phi0)
+    psi, phi = _integrate_to_steady(vel_vec, r_mat, z_mat, metrics, reynolds, psi0, phi0,
+                                    psi_interface=psi_interface)
     u_r, u_z = _velocity_from_psi(psi, r_mat, z_mat, metrics, r_floor_zero_border=True)
     return psi, phi, u_r, u_z
 
 
-def _cost(vel_vec, r_mat, z_mat, metrics, ur_meas, uz_meas, weight_mat, reynolds, psi0, phi0):
+def interface_arclength(r_mat, z_mat):
+    """Arclength coordinate ``s`` of the interface nodes (mesh column -1), starting at 0.
+
+    This is the coordinate the boundary-velocity spline is evaluated on inside the solver,
+    so use it whenever a prescribed profile has to line up with the fitted one -- e.g. when
+    building a modified profile for :func:`reconstruct_flow_field_from_profile`.
+    """
+    curve_r = np.asarray(r_mat, dtype=float)[:, -1]
+    curve_z = np.asarray(z_mat, dtype=float)[:, -1]
+    ds = np.sqrt(np.concatenate([[0], np.diff(curve_r)]) ** 2
+                 + np.concatenate([[0], np.diff(curve_z)]) ** 2)
+    return cumulative_trapezoid(ds, initial=0)
+
+
+def interface_velocity_from_control_points(vel_vec, r_mat, z_mat):
+    """The interfacial tangential velocity AT the mesh nodes for given spline control points.
+
+    Reproduces exactly what the solver prescribes internally for ``vel_vec`` (a cubic spline
+    through ``[0, *vel_vec, 0]`` placed at equal arclength intervals, sampled at the interface
+    nodes), so a fitted :attr:`AssimilationResult.vel_opt` can be turned into a node profile,
+    modified, and fed back through :func:`reconstruct_flow_field_from_profile`.
+
+    Returns
+    -------
+    (M,) array
+        Tangential velocity at each interface node, aligned with :func:`interface_arclength`.
+    """
+    s = interface_arclength(r_mat, z_mat)
+    vel_vec = np.asarray(vel_vec, dtype=float).ravel()
+    s4interp = np.linspace(s[0], s[-1], len(vel_vec) + 2)
+    tck = splrep(s4interp, np.concatenate([[0.0], vel_vec, [0.0]]))
+    return splev(s, tck)
+
+
+def reconstruct_flow_field_from_profile(vel_profile, r_mat, z_mat, metrics, reynolds,
+                                        psi0=None, phi0=None, psi_interface=None):
+    """Forward CFD solve for an ARBITRARY prescribed interfacial tangential velocity.
+
+    The counterpart to :func:`reconstruct_flow_field`, which can only express a boundary
+    velocity as a smooth spline through ``num_of_points`` control points. Here the profile is
+    given directly at the interface nodes, so it may be non-smooth or piecewise -- e.g. the
+    assimilated profile truncated to zero past the rim, to ask what flow a partially mobile
+    interface would drive.
+
+    Everything is NON-DIMENSIONAL, as in :func:`assimilate_boundary_velocity`.
+
+    Parameters
+    ----------
+    vel_profile : (M,) array
+        Tangential velocity at each interface node (mesh column -1), ordered along
+        :func:`interface_arclength`.
+    r_mat, z_mat : (M, N) arrays
+        Body-fitted mesh (column -1 is the interface).
+    metrics : tuple
+        Output of :func:`compute_mesh_metrics` for this mesh.
+    reynolds : float
+        Reynolds number.
+    psi0, phi0 : (M, N) arrays, optional
+        Initial stream function / vorticity for the pseudo-time march. Default zeros.
+    psi_interface : (M,) array, optional
+        PSI along the interface for a deforming surface (see
+        :func:`interface_psi_from_normal_velocity`). Default ``None`` = impermeable
+        (``u_n = 0``).
+
+    Returns
+    -------
+    (psi, phi, u_r, u_z) : all (M, N)
+    """
+    r_mat = np.asarray(r_mat, dtype=float)
+    z_mat = np.asarray(z_mat, dtype=float)
+    if psi0 is None:
+        psi0 = np.zeros_like(r_mat)
+    if phi0 is None:
+        phi0 = np.zeros_like(r_mat)
+    psi, phi = _integrate_to_steady(None, r_mat, z_mat, metrics, reynolds, psi0, phi0,
+                                    psi_interface=psi_interface, vel_profile=vel_profile)
+    u_r, u_z = _velocity_from_psi(psi, r_mat, z_mat, metrics, r_floor_zero_border=True)
+    return psi, phi, u_r, u_z
+
+
+def _cost(vel_vec, r_mat, z_mat, metrics, ur_meas, uz_meas, weight_mat, reynolds, psi0, phi0,
+          psi_interface=None):
     """Weighted sum-of-squares error between the NS solution and the measured velocity."""
-    psi, _ = _integrate_to_steady(vel_vec, r_mat, z_mat, metrics, reynolds, psi0, phi0)
+    psi, _ = _integrate_to_steady(vel_vec, r_mat, z_mat, metrics, reynolds, psi0, phi0,
+                                  psi_interface=psi_interface)
     u_r, u_z = _velocity_from_psi(psi, r_mat, z_mat, metrics, r_floor_zero_border=False)
     core = np.s_[2:-2, 2:-2]
     return (np.sum((u_r[core] - ur_meas[core]) ** 2 * weight_mat[core])
@@ -325,6 +524,8 @@ class AssimilationResult:
     u_z: np.ndarray                # reconstructed axial velocity field
     s: np.ndarray                  # arclength coordinate of the control points
     cost_history: list = field(default_factory=list)   # cost per optimizer iteration
+    psi_interface: np.ndarray | None = None   # PSI along the interface (moving surface only)
+    u_n_interface: np.ndarray | None = None   # prescribed normal velocity (moving surface only)
 
 
 def assimilate_boundary_velocity(
@@ -344,6 +545,7 @@ def assimilate_boundary_velocity(
     psi0: np.ndarray | None = None,
     phi0: np.ndarray | None = None,
     verbose: bool = True,
+    psi_interface: np.ndarray | None = None,
 ) -> AssimilationResult:
     """Fit the interfacial boundary velocity to the measured interior velocity field.
 
@@ -410,7 +612,8 @@ def assimilate_boundary_velocity(
         # (fine-mesh) problem each solve is slow, and without this the run looks stalled.
         n_eval["count"] += 1
         t0 = time.perf_counter()
-        c = _cost(vel_vec, r_mat, z_mat, metrics, ur_meas, uz_meas, weight_mat, reynolds, psi0, phi0)
+        c = _cost(vel_vec, r_mat, z_mat, metrics, ur_meas, uz_meas, weight_mat, reynolds,
+                  psi0, phi0, psi_interface=psi_interface)
         dt = time.perf_counter() - t0
         last_cost["value"] = c
         if verbose:
@@ -428,11 +631,83 @@ def assimilate_boundary_velocity(
     result = minimize(objective, x0=x0, method=method, bounds=bounds,
                       options={"disp": verbose, "maxiter": maxiter}, callback=on_iter)
 
-    psi, phi, u_r, u_z = reconstruct_flow_field(result.x, r_mat, z_mat, metrics, reynolds, psi0, phi0)
+    psi, phi, u_r, u_z = reconstruct_flow_field(result.x, r_mat, z_mat, metrics, reynolds,
+                                                psi0, phi0, psi_interface=psi_interface)
     return AssimilationResult(
         vel_opt=result.x, cost=float(result.fun), r_mat=r_mat, z_mat=z_mat,
         psi=psi, phi=phi, u_r=u_r, u_z=u_z, s=s_ctrl, cost_history=cost_history,
+        psi_interface=psi_interface,
     )
+
+
+def assimilate_boundary_velocity_with_moving_surface(
+    r_mat: np.ndarray,
+    z_mat: np.ndarray,
+    ur_meas: np.ndarray,
+    uz_meas: np.ndarray,
+    u_n_interface: np.ndarray,
+    reynolds: float,
+    num_of_points: int = 2,
+    weight_mat: np.ndarray | None = None,
+    u_scale: float = 1.0,
+    bound_factor: float = 1.5,
+    x0: np.ndarray | None = None,
+    method: str = "Powell",
+    maxiter: int = 400,
+    tol: float = 1e-6,
+    psi0: np.ndarray | None = None,
+    phi0: np.ndarray | None = None,
+    verbose: bool = True,
+) -> AssimilationResult:
+    """Fit the interfacial TANGENTIAL velocity for a DEFORMING (moving) interface.
+
+    Same inverse Navier-Stokes problem as :func:`assimilate_boundary_velocity`, but the
+    interface is no longer assumed impermeable. A deforming bubble has a measured normal
+    velocity ``u_n`` at its surface, which enters through PSI along the interface rather
+    than through its normal derivative::
+
+        u_t = +(1/r) dpsi/dn     <- the tangential control being optimized (unchanged)
+        u_n = -(1/r) dpsi/ds     <- the new condition
+
+    so the boundary data becomes ``psi|interface(s) = -int_0^s r u_n ds'`` (see
+    :func:`interface_psi_from_normal_velocity`) instead of ``psi = 0``. Setting
+    ``u_n = 0`` recovers :func:`assimilate_boundary_velocity` exactly.
+
+    Parameters
+    ----------
+    r_mat, z_mat, ur_meas, uz_meas, reynolds, num_of_points, weight_mat, u_scale,
+    bound_factor, x0, method, maxiter, tol, psi0, phi0, verbose
+        As in :func:`assimilate_boundary_velocity`.
+    u_n_interface : (M,) array
+        Outward normal velocity at the interface nodes (mesh column -1), NON-DIMENSIONAL --
+        divide the measured px/frame values by the same bubble velocity scale used for
+        ``ur_meas``/``uz_meas``. It must be volume-conserving (``int r u_n ds = 0``), since
+        the interface profile ends on the symmetry axis where ``psi = 0``; a warning is
+        raised otherwise.
+
+    Returns
+    -------
+    AssimilationResult
+        With ``psi_interface`` and ``u_n_interface`` populated alongside the usual fields.
+    """
+    r_mat = np.asarray(r_mat, dtype=float)
+    z_mat = np.asarray(z_mat, dtype=float)
+    u_n_interface = np.asarray(u_n_interface, dtype=float)
+
+    psi_interface = interface_psi_from_normal_velocity(r_mat, z_mat, u_n_interface)
+    if verbose:
+        print(f"[assimilate] moving surface: |u_n| max = {np.max(np.abs(u_n_interface)):.4g}, "
+              f"psi_interface range [{psi_interface.min():.3e}, {psi_interface.max():.3e}], "
+              f"closure psi(end) = {psi_interface[-1]:.2e}")
+
+    result = assimilate_boundary_velocity(
+        r_mat, z_mat, ur_meas, uz_meas, reynolds=reynolds, num_of_points=num_of_points,
+        weight_mat=weight_mat, u_scale=u_scale, bound_factor=bound_factor, x0=x0,
+        method=method, maxiter=maxiter, tol=tol, psi0=psi0, phi0=phi0, verbose=verbose,
+        psi_interface=psi_interface,
+    )
+    result.u_n_interface = u_n_interface
+    return result
 
 
 def boundary_velocity_profile(result: AssimilationResult, n_dense: int = 300):

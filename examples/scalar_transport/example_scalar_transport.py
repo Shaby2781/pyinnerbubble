@@ -72,7 +72,8 @@ def main():
         sh_matrix=result.sh_matrix,
         sh_final=result.sh_final,
     )
-    print(f"[transport] Sh at last time per Pe: {dict(zip(result.pe_vec, result.sh_final))}")
+    sh_by_pe = {float(pe): round(float(sh), 3) for pe, sh in zip(result.pe_vec, result.sh_final)}
+    print(f"[transport] Sh at last time per Pe: {sh_by_pe}")
     print(f"[transport] results saved -> {OUT_DIR}")
 
 
