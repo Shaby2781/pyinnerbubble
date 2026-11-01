@@ -2,18 +2,36 @@
 
 Measurement of internal velocity fields and scalar transport in rising bubbles from PLIF (planar laser-induced fluorescence) and shadowgraphy imagery.
 
-This library implements the method described in:
+This library implements the method of the accepted article:
 
-> R. Shabtay and I. Jacobi, "Internal Velocity Measurements and Scalar Transport Simulations in Rising Bubbles" (under review).
+> R. Shabtay and I. Jacobi, "Internal Velocity Measurements and Scalar Transport Simulations in Rising Bubbles," accepted for publication (American Physical Society).
+
+The rising bubbles are seeded with a fluorescent aerosol, and their internal velocity fields are
+educed by optic flow. Image distortions are corrected by ray tracing through a reconstructed
+three-dimensional bubble geometry. Physics-based data assimilation then extrapolates the
+missing velocity data near the interface and interpolates the interior field to high
+resolution. The measured fields drive scalar-transport simulations that give the Sherwood
+number for gas-side-limited transfer.
+
+The method was demonstrated on dimpled spherical-cap bubbles in silicone oil (Morton number
+Mo ≈ 1000, gas Reynolds number Re_g = 107–418). The measured fields revealed primary and
+secondary toroidal vortices. Transfer grew up to 3.5× between the low- and high-Péclet limits,
+compared with 2.7× in classical theory for spherical bubbles. The bundled example data is the
+paper's reference Re_g = 301 bubble (d_eq ≈ 22.5 mm, U_b ≈ 21 cm/s). This is the bubble used for
+the method figures in §III.
 
 ## Pipeline
 
 | Stage | Module | Paper section |
 |---|---|---|
-| Bubble shape reconstruction & ray-tracing | `pyinnerbubble.geometry` | §III A |
-| Velocity eduction (optic flow) | `pyinnerbubble.opticflow` | §III B |
-| Data assimilation — conformal map, mesh & inverse Navier-Stokes | `pyinnerbubble.assimilation` | §III C |
-| Scalar transport & Sherwood number | `pyinnerbubble.transport` | §IV |
+| Bubble shape reconstruction & ray-tracing | `pyinnerbubble.geometry` | §III A — Geometric Reconstruction of the Bubble |
+| Velocity eduction (Farneback optic flow + Savitzky–Golay smoothing) | `pyinnerbubble.opticflow` | §III B — Velocity Field Measurement in the Bubble Plane |
+| Data assimilation — conformal map (Kerzman–Stein), mesh & inverse Navier-Stokes (Powell) | `pyinnerbubble.assimilation` | §III C — Data Assimilation for the Interfacial Velocities |
+| Scalar transport & Sherwood number | `pyinnerbubble.transport` | §IV — Scalar Transport |
+
+Validation of each stage (shape reconstruction, optic flow, data assimilation, mass transfer)
+is reported in the paper's Appendix A, and the parameters of all measured bubbles are listed in
+Appendix B (Table IV).
 
 The data assimilation stage covers the body-fitted coordinate setup (the conformal map
 between the unit disk and the bubble region, and the graded computational mesh built from
@@ -148,9 +166,13 @@ setup/installation instructions (including running on AWS EC2).
 
 ## Citation
 
-If you use pyInnerBubble in your work, please cite:
+If you use pyInnerBubble in your work, please cite the accompanying article:
 
-> R. Shabtay and I. Jacobi, "Internal Velocity Measurements and Scalar Transport Simulations in Rising Bubbles" (under review).
+> R. Shabtay and I. Jacobi, "Internal Velocity Measurements and Scalar Transport Simulations in Rising Bubbles," accepted for publication (American Physical Society).
+
+## Acknowledgments
+
+This work was supported by Israel Science Foundation grant 219/21.
 
 ## License
 
